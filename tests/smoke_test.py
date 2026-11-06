@@ -17,6 +17,8 @@ async def main():
    root=page.locator('.saha-premium');assert await root.count()==1
    assert await root.locator('h1').inner_text()=='سَها، تجربه یک زیبایی'
    assert await root.locator('h1').evaluate('(e)=>e.scrollWidth<=e.clientWidth+1')
+   assert await root.locator('.hero-category-dock').count()==0
+   span_box=await root.locator('h1>span').bounding_box();line_box=await root.locator('.hero-underline').bounding_box();assert line_box['y']>=span_box['y']+span_box['height']
    assert await root.locator('.hero-scene img').evaluate('(e)=>e.complete&&e.naturalWidth>0')
    assert await root.locator('.hero-eyebrow').count()==0
    assert 'Saha Nastaliq' in await root.locator('h1').evaluate('(e)=>getComputedStyle(e).fontFamily')
@@ -36,11 +38,14 @@ async def main():
    pause=root.locator('.saha-motion-toggle');await pause.click();assert await pause.get_attribute('aria-pressed')=='true';assert await page.locator('html').get_attribute('data-saha-motion')=='paused';await pause.click();assert await pause.get_attribute('aria-pressed')=='false'
    if width in [390,1440]:await page.screenshot(path=f'/tmp/saha-premium-hero-{width}.png')
    art=root.locator('.saha-assembly');before=await art.locator('.gather-a').evaluate('(e)=>getComputedStyle(e).transform');await art.scroll_into_view_if_needed();await page.wait_for_timeout(100);after=await art.locator('.gather-a').evaluate('(e)=>getComputedStyle(e).transform');assert before!=after
-   perk=root.locator('#perks .perk').first;await perk.click();assert await root.locator('#perks .perk').first.get_attribute('aria-pressed')=='true'
+   assert await root.locator('#perks .perk-cell').count()==5
+   cell_box=await root.locator('#perks .perk-cell').first.bounding_box();assert abs(cell_box['width']-cell_box['height'])<2
+   assert await root.locator('.buffet-menu-trigger').is_visible()
    await root.locator('.buffet-menu-trigger').click();assert await root.locator('#saha-buffet-menu').evaluate('(e)=>e.open')
    assert await root.locator('#saha-menu-title').inner_text()=='منوی سها به‌زودی ♡'
    await page.keyboard.press('Escape');assert not await root.locator('#saha-buffet-menu').evaluate('(e)=>e.open')
    await root.locator('.buffet-menu-trigger').click();await root.locator('[data-saha-close-menu]').click();assert not await root.locator('#saha-buffet-menu').evaluate('(e)=>e.open')
+   perk=root.locator('#perks .perk').first;await perk.click();assert await root.locator('#perks .perk').first.get_attribute('aria-pressed')=='true'
    assert await root.locator('.future-reminder').count()==3
    assert 'ماکاپ' not in await root.inner_text()
    game=root.locator('[data-beauty-petal]');assert await game.count()==3
