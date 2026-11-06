@@ -113,3 +113,18 @@ html[data-saha-motion="paused"] *,html[data-saha-motion="paused"] *:before,html[
 .hero-title.saha-calligraphy{font-family:'Saha Nastaliq','Vazirmatn',serif;font-weight:400!important;font-size:clamp(42px,4.2vw,60px)!important;line-height:2.6!important;letter-spacing:0!important;margin:0 0 12px;min-height:156px}
 .hero-title.saha-calligraphy>span{white-space:nowrap}.hero-title.saha-calligraphy .hero-underline{bottom:8px}
 @media(max-width:650px){.hero-title.saha-calligraphy{font-size:clamp(30px,9.8vw,42px)!important;line-height:2.7!important;min-height:113px}}
+/* Compact amenities with a permanently visible, separate buffet menu action. */
+.hero-title.saha-calligraphy>span{position:relative;padding-bottom:18px}.hero-title.saha-calligraphy .hero-underline{bottom:-12px}
+.saha-premium #top.premium-hero{min-height:0!important;padding-bottom:24px!important}
+#perks .perks-compact-grid{grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:14px!important}
+.perk-cell{position:relative;aspect-ratio:1;min-width:0}
+.saha-premium #perks .perk-cell>.perk{width:100%;height:100%;min-height:0;min-width:0;padding:20px 12px!important;border:1.5px solid #b77c98aa!important;border-radius:12px!important;box-shadow:inset 0 0 0 5px #fff2,0 9px 25px #6e364c15!important;justify-content:center;gap:9px}
+#perks .perk-cell>.perk>span:nth-of-type(1){font-size:16px!important}#perks .perk-cell>.perk>span:nth-of-type(2){font-size:12px!important}
+.saha-premium #perks .perk-cell-buffet>.perk{padding-bottom:63px!important}
+#perks .perk-cell .buffet-menu-trigger{position:absolute;bottom:12px;left:50%;translate:-50% 0;margin:0;width:calc(100% - 28px);max-width:155px;min-height:44px;padding:7px 10px;font-size:12px;border:1px solid #9e5d7c88;background:#f3d1de;color:#683b53;z-index:2}
+@media(max-width:900px){#perks .perks-compact-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:650px){#perks .perks-compact-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}.saha-premium #perks .perk-cell>.perk{padding:16px 9px!important;gap:6px}.saha-premium #perks .perk-cell-buffet>.perk{padding-bottom:58px!important}.perk-cell .pi{width:29px;height:29px}#perks .perk-cell>.perk>span:nth-of-type(1){font-size:14px!important}#perks .perk-cell>.perk>span:nth-of-type(2){font-size:11px!important}#perks .perk-cell .buffet-menu-trigger{bottom:8px;width:calc(100% - 20px)}}
+.hero-title.saha-calligraphy .hero-underline{top:calc(100% + 4px);bottom:auto}
+@media(max-width:359px){.saha-premium #perks .perk-cell-buffet>.perk{padding-top:7px!important;padding-bottom:57px!important;gap:3px}.perk-cell-buffet .pi{width:20px;height:20px;flex-shrink:0}#perks .perk-cell-buffet>.perk>span:nth-of-type(1){font-size:12px!important}#perks .perk-cell-buffet>.perk>span:nth-of-type(2){font-size:10px!important}}
+/* Modal controls stay fixed under touch-generated hover. */
+.saha-menu-dialog .refinement-button{translate:none!important;transition:background .25s!important}
