@@ -10,13 +10,25 @@ async def main():
   for width in [320,390,768,1440]:
    context=await browser.new_context(viewport={'width':width,'height':900},device_scale_factor=1,is_mobile=width<650,has_touch=width<650)
    await context.add_init_script("window.__cls=0;new PerformanceObserver(l=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.__cls+=e.value}).observe({type:'layout-shift',buffered:true});")
-   page=await context.new_page();errors=[];failed=[]
+   page=await context.new_page();errors=[];failed=[];requests=[]
+   page.on('request',lambda r:requests.append((r.url,r.post_data or '')))
    page.on('pageerror',lambda e:errors.append(str(e)));page.on('requestfailed',lambda r:failed.append(r.url))
    await page.goto(BASE,wait_until='networkidle',timeout=45000);await page.wait_for_timeout(900)
    root=page.locator('.saha-premium');assert await root.count()==1
-   assert 'زیبایی،' in await root.locator('h1').inner_text() and 'به سبک تو' in await root.locator('h1').inner_text()
+   assert await root.locator('h1').inner_text()=='سَها، تجربه یک زیبایی'
    assert await root.locator('h1').evaluate('(e)=>e.scrollWidth<=e.clientWidth+1')
    assert await root.locator('.hero-scene img').evaluate('(e)=>e.complete&&e.naturalWidth>0')
+   assert await root.locator('.hero-eyebrow').count()==0
+   assert 'Saha Nastaliq' in await root.locator('h1').evaluate('(e)=>getComputedStyle(e).fontFamily')
+   assert await page.evaluate("document.fonts.check('26px Saha Nastaliq')")
+   assert await root.locator('.reservation-note').count()==1
+   assert 'برای قطعی‌شدن نوبتت بیعانه دریافت می‌شه.' in await root.locator('.reservation-note').inner_text()
+   assert not any('saha-quiet-bloom.mp3' in url for url,_ in requests),'موسیقی نباید پیش‌فرض بارگیری شود'
+   music=root.locator('[data-saha-music]');assert await music.get_attribute('aria-pressed')=='false'
+   await music.click();await page.wait_for_function('document.querySelector("[data-saha-music]").getAttribute("aria-pressed")==="true"')
+   assert any('saha-quiet-bloom.mp3' in url for url,_ in requests)
+   await music.click();assert await music.get_attribute('aria-pressed')=='false'
+
    canvas=root.locator('canvas'); count=int(await canvas.get_attribute('data-particle-count'));assert count==(26 if width<700 else 58)
    starts=await canvas.get_attribute('data-burst-starts');assert starts=='1'
    await page.wait_for_timeout(3200);assert await canvas.get_attribute('data-phase')=='settled'
@@ -25,12 +37,30 @@ async def main():
    if width in [390,1440]:await page.screenshot(path=f'/tmp/saha-premium-hero-{width}.png')
    art=root.locator('.saha-assembly');before=await art.locator('.gather-a').evaluate('(e)=>getComputedStyle(e).transform');await art.scroll_into_view_if_needed();await page.wait_for_timeout(100);after=await art.locator('.gather-a').evaluate('(e)=>getComputedStyle(e).transform');assert before!=after
    perk=root.locator('#perks .perk').first;await perk.click();assert await root.locator('#perks .perk').first.get_attribute('aria-pressed')=='true'
+   await root.locator('.buffet-menu-trigger').click();assert await root.locator('#saha-buffet-menu').evaluate('(e)=>e.open')
+   assert await root.locator('#saha-menu-title').inner_text()=='منوی سها به‌زودی ♡'
+   await page.keyboard.press('Escape');assert not await root.locator('#saha-buffet-menu').evaluate('(e)=>e.open')
+   await root.locator('.buffet-menu-trigger').click();await root.locator('[data-saha-close-menu]').click();assert not await root.locator('#saha-buffet-menu').evaluate('(e)=>e.open')
+   assert await root.locator('.future-reminder').count()==3
+   assert 'ماکاپ' not in await root.inner_text()
+   game=root.locator('[data-beauty-petal]');assert await game.count()==3
+   await game.nth(1).click();assert 'نتیجه نمایشی' in await root.locator('.beauty-game-result').inner_text()
+   assert await game.nth(1).get_attribute('aria-pressed')=='true'
+   await root.locator('[data-beauty-reset]').click();assert await game.nth(1).is_enabled();assert await root.locator('.beauty-game-result').inner_text()==''
+   assert 'فعلاً ثبت معرفی و تخفیف واقعی فعال نیست.' in await root.locator('.friend-invite').inner_text()
+   allergy=root.locator('#saha-allergy-demo');await allergy.fill('DEMO_ONLY_NOT_REAL');await root.locator('[data-saha-demo-submit]').click()
+   assert await allergy.input_value()=='';assert 'چیزی ذخیره یا ارسال نشد' in await root.locator('.booking-demo-status').inner_text()
+   assert not any('DEMO_ONLY_NOT_REAL' in url+body for url,body in requests)
+   assert 'DEMO_ONLY_NOT_REAL' not in await page.evaluate('JSON.stringify({...localStorage,...sessionStorage})')
+
    cards=root.locator('#services .svc');assert await cards.count()==11
    text=await root.locator('#services').inner_text();assert all(x in text for x in ['موخوره','اسکالپ','ژلیش','خلیجی','لیزر','اصلاح صورت'])
    choices=root.locator('.petal-choice');assert await choices.count()==3
    piece=root.locator('.petal-piece').first;scatter=await piece.get_attribute('style');await choices.nth(1).click();assert scatter!=await root.locator('.petal-piece').first.get_attribute('style');assert await root.locator('.petal-choice').nth(1).get_attribute('aria-pressed')=='true'
    await root.locator('.petal-choice').nth(2).focus();await page.keyboard.press('Enter');assert await root.locator('.petal-choice').nth(2).get_attribute('aria-pressed')=='true'
-   detail=root.locator('.saha-package').first;await detail.locator('summary').click();assert await root.locator('.saha-package').first.get_attribute('open') is not None
+   packages=root.locator('.package-grid>.card3');assert await packages.count()==4
+   assert 'با دوست یا همراهت بیا' in await packages.nth(2).inner_text()
+   assert 'میکاپ مهمانی، شینیون یا بافت' in await packages.nth(3).inner_text()
    like=root.locator('.saha-like').first;await like.click();assert await root.locator('.saha-like').first.get_attribute('aria-pressed')=='true'
    assert json.loads(await page.evaluate("localStorage.getItem('saha-trend-likes')"))['1'] is True
    cold=root.locator('#consult button.opt').filter(has_text='سرد');await cold.click();assert 'بلوند یخی' in await root.locator('#consult').inner_text()
