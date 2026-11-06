@@ -172,3 +172,85 @@
     media.removeEventListener('change', onPreference); document.removeEventListener('visibilitychange', visibility);
   };
 })();
+
+/* Scoped enhancements: opt-in licensed audio and explicitly non-persistent demos. */
+(() => {
+  'use strict';
+  if (window.__sahaRefinementsCleanup) window.__sahaRefinementsCleanup();
+  const musicUrl = new URL('saha-quiet-bloom.mp3', document.currentScript.src).href;
+  let audio = null, pendingMusic = false, musicError = '', gameChoice = null;
+  const gameMessages = ['نتیجه نمایشی: گلبرگِ حال خوب سهمت شد ♡', 'نتیجه نمایشی: گلبرگِ تخفیف رو پیدا کردی ♡', 'نتیجه نمایشی: امروز نوبت درخشیدنته ✨'];
+  const root = () => document.querySelector('.saha-premium');
+  function text(node, value) { if (node && node.textContent !== value) node.textContent = value; }
+  function sync() {
+    const app = root(); if (!app) return;
+    app.querySelectorAll('[data-saha-music]').forEach(button => {
+      const playing = !!audio && !audio.paused;
+      button.setAttribute('aria-pressed', String(playing)); button.disabled = pendingMusic;
+      button.setAttribute('aria-label', playing ? 'قطع موسیقی بی‌کلام' : 'پخش موسیقی بی‌کلام');
+      text(button, pendingMusic ? 'در حال آماده‌سازی…' : playing ? 'موسیقی روشن ♫' : 'موسیقی خاموش ♫');
+    });
+    text(app.querySelector('.music-feedback'), musicError);
+    app.querySelectorAll('[data-beauty-petal]').forEach(button => {
+      button.setAttribute('aria-pressed', String(gameChoice === Number(button.dataset.beautyPetal)));
+      button.disabled = gameChoice !== null;
+    });
+    text(app.querySelector('.beauty-game-result'), gameChoice === null ? '' : gameMessages[gameChoice]);
+  }
+  async function toggleMusic() {
+    if (pendingMusic) return;
+    musicError = '';
+    if (!audio) {
+      audio = new Audio(); audio.preload = 'none'; audio.loop = true; audio.volume = .28; audio.src = musicUrl;
+      audio.addEventListener('play', sync); audio.addEventListener('pause', sync);
+      audio.addEventListener('error', () => { pendingMusic = false; musicError = 'پخش موسیقی ممکن نشد؛ دوباره امتحان کن.'; sync(); });
+    }
+    if (!audio.paused) { audio.pause(); sync(); return; }
+    pendingMusic = true; sync();
+    try { await audio.play(); }
+    catch (_) { musicError = 'پخش موسیقی ممکن نشد؛ دوباره امتحان کن.'; }
+    finally { pendingMusic = false; sync(); }
+  }
+  function demoForm(form) {
+    // Never read, serialize, persist, log or transmit the sensitive field.
+    form.reset();
+    text(form.querySelector('.booking-demo-status'), 'این فقط یه امتحان بود؛ چیزی ذخیره یا ارسال نشد ♡');
+  }
+  function click(event) {
+    if (!(event.target instanceof Element)) return;
+    const target = event.target;
+    if (target.closest('[data-saha-music]')) { event.preventDefault(); toggleMusic(); return; }
+    if (target.closest('[data-saha-open-menu]')) {
+      const dialog = root()?.querySelector('#saha-buffet-menu');
+      if (dialog && !dialog.open) dialog.showModal(); return;
+    }
+    if (target.closest('[data-saha-close-menu]')) { root()?.querySelector('#saha-buffet-menu')?.close(); return; }
+    const dialog = root()?.querySelector('#saha-buffet-menu');
+    if (target === dialog) {
+      const rect = dialog.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close();
+      return;
+    }
+    const petal = target.closest('[data-beauty-petal]');
+    if (petal && gameChoice === null) { gameChoice = Number(petal.dataset.beautyPetal); sync(); return; }
+    if (target.closest('[data-beauty-reset]')) { gameChoice = null; sync(); return; }
+    if (target.closest('[data-saha-demo-submit]')) { event.preventDefault(); const form = target.closest('form'); if (form) demoForm(form); }
+  }
+  function submit(event) {
+    if (event.target.matches('[data-saha-booking-demo]')) { event.preventDefault(); demoForm(event.target); }
+  }
+  function clearDemo() { root()?.querySelectorAll('[data-saha-booking-demo]').forEach(form => form.reset()); }
+  function visibility() { if (document.hidden && audio) audio.pause(); }
+  function leave() { if (audio) audio.pause(); clearDemo(); }
+  // Hydration may recreate buttons; keep audio and non-sensitive game state in memory only.
+  const observer = new MutationObserver(sync);
+  observer.observe(document.documentElement, {childList:true, subtree:true});
+  document.addEventListener('click', click); document.addEventListener('submit', submit);
+  document.addEventListener('visibilitychange', visibility); window.addEventListener('pagehide', leave);
+  sync();
+  window.__sahaRefinementsCleanup = () => {
+    observer.disconnect(); document.removeEventListener('click', click); document.removeEventListener('submit', submit);
+    document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', leave);
+    if (audio) { audio.pause(); audio.removeAttribute('src'); audio.load(); } clearDemo();
+  };
+})();
