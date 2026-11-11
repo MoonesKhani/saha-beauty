@@ -25,7 +25,7 @@ def inline_html(html):
   code=path.read_text()
   if path.name.startswith('saha-premium.') or path.name=='saha-premium.js':
    code=code.replace("const musicUrl = new URL('saha-quiet-bloom.mp3', document.currentScript.src).href;",'const musicUrl = '+json.dumps(data_url(ROOT/'assets/saha-quiet-bloom.mp3'))+';')
-  if path.name=='saha-collections.js':code=code.replace("fetch('/assets/saha-gallery.json',{cache:'no-store'})","Promise.resolve({ok:true,json:async()=>[]})")
+  if path.name.startswith('saha-collections.'):code=code.replace("fetch('/assets/saha-gallery.json',{cache:'no-store'})","Promise.resolve({ok:true,json:async()=>[]})")
   if 'defer' in match[1]+match[3]:code="document.addEventListener('DOMContentLoaded',()=>{\n"+code+'\n});'
   return '<script>'+code.replace('</script','<\\/script')+'</script>'
  html=re.sub(r'<script([^>]*?)src="([^\"]+)"([^>]*)></script>',script,html)
@@ -36,7 +36,7 @@ def inline_html(html):
 def build(output):
  shell=(ROOT/'index.html').read_text();match=re.search(r'(<script type="__bundler/template">\s*)(.*?)(\s*</script>)',shell,re.S)
  page=inline_html(json.loads(match[2]))
- child={name:inline_html((ROOT/name).read_text()) for name in ['gallery.html','discounts.html']}
+ child={name:inline_html((ROOT/name).read_text()) for name in ['gallery.html','discounts.html','ai-consultation.html','invite.html']}
  # Children are genuine separate Blob documents; their back link returns to this local preview.
  setup="""(() => {const home=location.href;const pages=@@PAGES@@;const routes={};for(const [name,html] of Object.entries(pages)){const doc=new DOMParser().parseFromString(html,'text/html');doc.querySelectorAll('a[href="/"]').forEach(a=>{a.setAttribute('href',home);a.setAttribute('onclick','event.preventDefault();history.back();');});routes['/'+name]=URL.createObjectURL(new Blob(['<!doctype html>'+doc.documentElement.outerHTML],{type:'text/html'}));}window.__sahaPreviewUnavailable=()=>alert('این فایل فقط پیش‌نمایش منتشرنشده چیدمان است؛ این بخش به سرور متصل نیست.');document.addEventListener('click',event=>{const link=event.target.closest?.('a');if(!link)return;const href=link.getAttribute('href');if(routes[href]){event.preventDefault();location.assign(routes[href]);return;}if(href?.startsWith('/')&&!href.startsWith('//')){event.preventDefault();window.__sahaPreviewUnavailable();}},true);})();""".replace('@@PAGES@@',json.dumps(child,ensure_ascii=False).replace('<','\\u003c'))
  page=page.replace('</body>','<script>'+setup+'</script></body>')
@@ -47,4 +47,4 @@ def build(output):
  output.write_text(shell)
  return output
 if __name__=='__main__':
- parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=Path('/tmp/saha-mobile-v2-preview.html'));args=parser.parse_args();print(build(args.output))
+ parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=Path('/tmp/saha-mobile-v3-preview.html'));args=parser.parse_args();print(build(args.output))

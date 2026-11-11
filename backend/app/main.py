@@ -126,7 +126,7 @@ def create_app(settings=None):
 
     @app.get('/{page}', response_class=HTMLResponse, include_in_schema=False)
     def leisure_page(page: str, demo: bool=False):
-        if page in ['gallery.html','discounts.html','booking.html','booking-demo.html','admin-access.html','scheduling.html','admin-demo.html','group-visit.html','playlist.html']:
+        if page in ['ai-consultation.html','invite.html','gallery.html','discounts.html','booking.html','booking-demo.html','admin-access.html','scheduling.html','admin-demo.html','group-visit.html','playlist.html']:
             return HTMLResponse((settings.frontend_dir / page).read_text(),headers={'Cache-Control':'no-store'})
         if (demo and not settings.preview_enabled) or page not in ['buffet','playlist','products']:
             raise HTTPException(404,'صفحه پیدا نشد.')

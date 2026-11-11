@@ -22,7 +22,7 @@ async def main():
    async def legacy(route):stale.append(route.request.url);await route.fulfill(body='/* stale asset must not be requested */',content_type='text/css')
    await page.route('**/assets/saha-premium.css',legacy);await page.route('**/assets/saha-premium.js',legacy)
    await page.goto(BASE+'/',wait_until='networkidle');await page.evaluate('document.fonts.ready');await page.locator('[data-music-icon]').wait_for()
-   assert await page.locator('meta[name=saha-release]').get_attribute('content')=='mobile-compact-v2-preview'
+   assert await page.locator('meta[name=saha-release]').get_attribute('content')=='mobile-compact-v3-preview'
    assert not stale
    header=page.locator('.saha-premium header');boxes=[await header.locator(s).bounding_box() for s in ['a[href="#top"]','a[href="/booking.html"]','.saha-more summary']]
    assert max(b['y']+b['height']/2 for b in boxes)-min(b['y']+b['height']/2 for b in boxes)<2,boxes
@@ -33,9 +33,9 @@ async def main():
    assert await page.locator('.petal-playground,.beauty-game,#work').count()==0
    assert await page.locator('.saha-assembly').evaluate('(e)=>e.getBoundingClientRect().width')<=74
    results[str(width)]=await page.evaluate('document.documentElement.scrollHeight')
-   await page.screenshot(path=f'/tmp/saha-mobile-v2-hero-{width}.png',scale='css')
-   await page.locator('#services').screenshot(path=f'/tmp/saha-mobile-v2-services-{width}.png',scale='css')
-   await page.locator('#packages').screenshot(path=f'/tmp/saha-mobile-v2-packages-{width}.png',scale='css')
+   await page.screenshot(path=f'/tmp/saha-mobile-v3-hero-{width}.png',scale='css')
+   await page.locator('#services').screenshot(path=f'/tmp/saha-mobile-v3-services-{width}.png',scale='css')
+   await page.locator('#packages').screenshot(path=f'/tmp/saha-mobile-v3-packages-{width}.png',scale='css')
    await page.get_by_role('button',name='مشاهده همه خدمات',exact=True).click();assert await page.locator('#services .svc').count()==10;names=await page.locator('#services .svc h3').all_text_contents();assert 'ابرو' not in names and 'عروس' not in names and 'تزریق ژل و فیلر' in names
    if mobile:await swipe(context,page,'#service-cards')
    else:await page.get_by_role('button',name='خدمات بعدی',exact=True).click();await page.wait_for_timeout(400)
@@ -60,11 +60,11 @@ async def main():
    await context.close()
   # Serve the downloaded HTML as one document; all application assets must be inline.
   context=await browser.new_context(viewport={'width':390,'height':900},is_mobile=True,has_touch=True,user_agent=UA);page=await context.new_page();requests=[];errors=[];page.on('request',lambda r:requests.append(r.url) if r.url.startswith('http') else None);page.on('pageerror',lambda e:errors.append(str(e)))
-  await page.route(BASE+'/standalone-preview.html',lambda route:route.fulfill(body=Path('/tmp/saha-mobile-v2-preview.html').read_text(),content_type='text/html'))
+  await page.route(BASE+'/standalone-preview.html',lambda route:route.fulfill(body=Path('/tmp/saha-mobile-v3-preview.html').read_text(),content_type='text/html'))
   await page.goto(BASE+'/standalone-preview.html',wait_until='networkidle');await page.locator('#services .svc').first.wait_for();assert await page.locator('#services .svc').count()==3;assert len(requests)==1,requests
   await page.locator('.saha-more summary').click();await page.get_by_role('link',name='تخفیف و شانس زیبایی ✨',exact=True).click();await page.wait_for_url('blob:**');await page.locator('[data-beauty-petal="1"]').click();assert 'نمایشی' in await page.locator('.beauty-game-result').inner_text()
   await page.get_by_role('link',name='بازگشت به صفحه اصلی ←',exact=True).click();await page.locator('#services .svc').first.wait_for();await page.locator('.saha-more summary').click();await page.get_by_role('link',name='گالری نمونه‌کارها',exact=True).click();await page.wait_for_url('blob:**');await page.locator('#gallery-empty').wait_for(state='visible');assert not errors,errors
   print('فایل مستقل: بدون درخواست فایل جانبی؛ تخفیف، گالری و بازگشت به پیش‌نمایش موفق',flush=True)
   await browser.close()
- Path('/tmp/saha-mobile-v2-results.json').write_text(json.dumps(results))
+ Path('/tmp/saha-mobile-v3-results.json').write_text(json.dumps(results))
 if __name__=='__main__':asyncio.run(main())
