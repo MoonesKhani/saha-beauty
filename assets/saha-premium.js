@@ -188,7 +188,8 @@
       const playing = !!audio && !audio.paused;
       button.setAttribute('aria-pressed', String(playing)); button.disabled = pendingMusic;
       button.setAttribute('aria-label', playing ? 'قطع موسیقی بی‌کلام' : 'پخش موسیقی بی‌کلام');
-      text(button, pendingMusic ? 'در حال آماده‌سازی…' : playing ? 'موسیقی روشن ♫' : 'موسیقی خاموش ♫');
+      text(button, pendingMusic ? '⋯' : playing ? 'Ⅱ' : '♫');
+      button.title = playing ? 'قطع موسیقی بی‌کلام' : 'پخش موسیقی بی‌کلام';
     });
     text(app.querySelector('.music-feedback'), musicError);
     app.querySelectorAll('[data-beauty-petal]').forEach(button => {
