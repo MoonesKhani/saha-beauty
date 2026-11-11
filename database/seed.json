@@ -1,0 +1,163 @@
+{
+  "services": [
+    {
+      "code": "01",
+      "name": "مو",
+      "description": "کوتاهی، رنگ مو، موخوره‌گیری، شینیون، بافت و اسکالپ / پاکسازی.",
+      "sort_order": 0
+    },
+    {
+      "code": "02",
+      "name": "ناخن",
+      "description": "کاور، کاشت، ترمیم، ژلیش، مانیکور، لمینت و طراحی.",
+      "sort_order": 1
+    },
+    {
+      "code": "03",
+      "name": "پوست",
+      "description": "پاکسازی و مراقبت از پوست.",
+      "sort_order": 2
+    },
+    {
+      "code": "04",
+      "name": "میکاپ",
+      "description": "مجلسی، مهمانی، لایت، عروسکی، خلیجی، اسموکی و خطی.",
+      "sort_order": 3
+    },
+    {
+      "code": "05",
+      "name": "ابرو",
+      "description": "اصلاح و فرم‌دهی ابرو.",
+      "sort_order": 4
+    },
+    {
+      "code": "06",
+      "name": "عروس",
+      "description": "آماده‌سازی برای روز عروسی.",
+      "sort_order": 5
+    },
+    {
+      "code": "07",
+      "name": "پدیکور و جوانسازی دست",
+      "description": "مراقبت از پا، پدیکور و جوانسازی دست.",
+      "sort_order": 6
+    },
+    {
+      "code": "08",
+      "name": "آرایش دائم صورت",
+      "description": "تتوی صورت و آرایش دائم متناسب با چهره.",
+      "sort_order": 7
+    },
+    {
+      "code": "09",
+      "name": "مژه",
+      "description": "اکستنشن مژه و زیبایی نگاه.",
+      "sort_order": 8
+    },
+    {
+      "code": "10",
+      "name": "لیزر",
+      "description": "برای مشاوره خدمات لیزر با سالن در تماس باش.",
+      "sort_order": 9
+    },
+    {
+      "code": "11",
+      "name": "اصلاح صورت",
+      "description": "اصلاح صورت با ۴ روش؛ انتخاب روش با مشاوره.",
+      "sort_order": 10
+    },
+    {
+      "code": "hair-braid",
+      "name": "بافت",
+      "description": "خدمت بافت",
+      "sort_order": 11
+    },
+    {
+      "code": "hair-updo",
+      "name": "شینیون",
+      "description": "خدمت شینیون",
+      "sort_order": 12
+    },
+    {
+      "code": "hair-scalp",
+      "name": "اسکالپ",
+      "description": "خدمت اسکالپ",
+      "sort_order": 13
+    },
+    {
+      "code": "hair-color",
+      "name": "رنگ",
+      "description": "خدمت رنگ",
+      "sort_order": 14
+    },
+    {
+      "code": "hair-split-ends",
+      "name": "موخوره‌گیری",
+      "description": "خدمت موخوره‌گیری",
+      "sort_order": 15
+    },
+    {
+      "code": "hair-extensions",
+      "name": "اکستنشن",
+      "description": "خدمت اکستنشن",
+      "sort_order": 16
+    },
+    {
+      "code": "gel-filler",
+      "name": "تزریق ژل و فیلر",
+      "description": "خدمت تزریق ژل و فیلر",
+      "sort_order": 17
+    }
+  ],
+  "team": [
+    {
+      "code": "01",
+      "name": "سهام شحیتی",
+      "role": "مدیر سالن",
+      "bio": "۱۰ سال تخصصی · تخصص پوست و مو",
+      "sort_order": 0
+    },
+    {
+      "code": "02",
+      "name": "کوثر عبدالخانی",
+      "role": "متخصص ناخن",
+      "bio": "۳ سال · تخصص ناخن و پدیکور",
+      "sort_order": 1
+    },
+    {
+      "code": "03",
+      "name": "هاجر عبدالخانی",
+      "role": "میکاپ",
+      "bio": "۷ سال · تخصص میکاپ",
+      "sort_order": 2
+    },
+    {
+      "code": "04",
+      "name": "ندا عبدالخانی",
+      "role": "رنگ مو",
+      "bio": "۶ سال · تخصص رنگ",
+      "sort_order": 3
+    },
+    {
+      "code": "05",
+      "name": "حمیده الهایی",
+      "role": "آرایش دائم",
+      "bio": "۸ سال · تتوی صورت",
+      "sort_order": 4
+    },
+    {
+      "code": "06",
+      "name": "زینب شحیتی",
+      "role": "متخصص مژه",
+      "bio": "۲ سال · اکستنشن مژه",
+      "sort_order": 5
+    },
+    {
+      "code": "07",
+      "name": "فردوس عبدالخانی",
+      "role": "اصلاح صورت",
+      "bio": "۱ سال · اصلاح صورت با ۴ روش",
+      "sort_order": 6
+    }
+  ]
+}

@@ -234,10 +234,10 @@
     const petal = target.closest('[data-beauty-petal]');
     if (petal && gameChoice === null) { gameChoice = Number(petal.dataset.beautyPetal); sync(); return; }
     if (target.closest('[data-beauty-reset]')) { gameChoice = null; sync(); return; }
-    if (target.closest('[data-saha-demo-submit]')) { event.preventDefault(); window.location.assign('/booking-demo.html'); }
+    if (target.closest('[data-saha-demo-submit]')) { event.preventDefault(); window.location.assign('/booking.html'); }
   }
   function submit(event) {
-    if (event.target.matches('[data-saha-booking-demo]')) { event.preventDefault(); window.location.assign('/booking-demo.html'); }
+    if (event.target.matches('[data-saha-booking-demo]')) { event.preventDefault(); window.location.assign('/booking.html'); }
   }
   function clearDemo() { root()?.querySelectorAll('[data-saha-booking-demo]').forEach(form => form.reset()); }
   function visibility() { if (document.hidden && audio) audio.pause(); }
