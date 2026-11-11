@@ -1,2 +1,4 @@
+# Apply the same runtime constraints outside Docker as inside it.
+-c constraints.txt
 -r requirements.txt
 psycopg[binary]==3.2.12

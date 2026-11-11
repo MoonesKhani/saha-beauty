@@ -4,7 +4,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY backend/requirements.txt backend/requirements-postgres.txt backend/constraints.txt ./backend/
-RUN --mount=type=secret,id=proxy_ca if [ -f /run/secrets/proxy_ca ]; then export PIP_CERT=/run/secrets/proxy_ca; fi; pip install --no-cache-dir -c backend/constraints.txt -r backend/requirements-postgres.txt
+RUN --mount=type=secret,id=proxy_ca if [ -f /run/secrets/proxy_ca ]; then export PIP_CERT=/run/secrets/proxy_ca; fi; python -m pip install --no-cache-dir -r backend/requirements-postgres.txt && python -m pip check
 COPY backend ./backend
 COPY database ./database
 COPY frontend ./frontend
