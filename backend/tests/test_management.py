@@ -75,7 +75,7 @@ def test_content_publication_license_and_demo_isolation(client):
     assert client.get('/api/v1/leisure/buffet').json()=={'items':[]}
     assert post(client,'offers',{**data,'kind':'playlist','audio_url':'https://unknown.example/music.mp3'}).status_code==422
     assert post(client,'offers',{**data,'kind':'playlist','audio_url':'/assets/saha-quiet-bloom.mp3'}).status_code==201
-    for page in ['/admin','/admin/demo','/buffet','/playlist','/products']:
+    for page in ['/admin','/admin/demo','/admin-demo.html','/buffet','/playlist','/products']:
         r=client.get(page);assert r.status_code==200;assert TOKEN not in r.text
     assert get(client,'appointments')==[] and get(client,'consultations')==[]
     assert client.get('/api/v1/admin/overview',headers=H).headers['cache-control']=='no-store'
