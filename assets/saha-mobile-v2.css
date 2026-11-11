@@ -276,3 +276,44 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   .saha-premium #contact-info .contact-group { padding: 9px !important; }
   .saha-premium #contact-info .contact-group-links a { font-size: 11px !important; }
 }
+/* Version 4: introductions and contact details use small, non-service surfaces. */
+.saha-more > nav { max-height: min(70vh, 420px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.saha-premium #why .compact-why-grid { display: grid !important; grid-template-columns: repeat(3,minmax(0,1fr)) !important; gap: 8px !important; max-width: 750px; padding-bottom: 0; overflow: visible; }
+.saha-premium #why .compact-why-grid > .gb { min-width: 0; min-height: 108px !important; padding: 10px !important; border-radius: 14px !important; box-shadow: inset 0 1px 0 #fff6 !important; }
+.saha-premium #why .compact-why-grid > .gb > div[dir="ltr"] { display: none; }
+.saha-premium #why .compact-why-grid > .gb > div:not([dir]) { width: 24px !important; height: 24px !important; border-radius: 8px !important; margin-bottom: 6px !important; box-shadow: none !important; }
+.saha-premium #why .compact-why-grid > .gb svg { width: 15px; height: 15px; }
+.saha-premium #why .compact-why-grid .gb h3 { font-size: 12px !important; line-height: 1.5 !important; margin-bottom: 4px !important; }
+.saha-premium #why .compact-why-grid .gb p { font-size: 10.5px !important; line-height: 1.65 !important; }
+.saha-premium #why .compact-why-intro p { font-size: 12px !important; }
+.saha-premium #consult.mini-consult { padding-block: 14px !important; }
+.mini-consult-inner { max-width: 1168px; margin: auto; padding: 12px 18px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 16px; }
+.saha-premium #consult .mini-consult-inner h2 { margin: 0; font-size: 18px !important; }
+.saha-premium #consult .mini-consult-inner p { margin: 4px 0 0; font-size: 12px !important; line-height: 1.8 !important; }
+.saha-premium #consult .mini-consult-link { min-height: 44px !important; padding: 8px 14px !important; font-size: 12px !important; white-space: nowrap; }
+.saha-premium #contact-info .contact-group { padding: 7px 9px !important; border-radius: 11px; }
+.saha-premium #contact-info .contact-group-heading { font-size: 11px; gap: 5px; margin-bottom: 1px; }
+.saha-premium #contact-info .contact-group-heading svg { width: 14px; height: 14px; flex-basis: 14px; }
+.saha-premium #contact-info .contact-group-links a { min-height: 38px; padding-block: 3px; font-size: 11px !important; }
+.saha-premium #contact-info .contact-group small { font-size: 9.5px; line-height: 1.6; }
+.saha-premium #contact-info > .mini-map { min-height: 154px !important; border-radius: 14px !important; }
+.saha-premium #contact-info > .mini-map > div { padding: 10px 12px !important; right: 12px !important; left: 12px !important; bottom: 12px !important; border-radius: 12px !important; gap: 6px !important; }
+.saha-premium #contact-info > .mini-map > div span { font-size: 10px !important; padding: 4px 10px !important; }
+.saha-premium .mini-contact-head { max-width: 100% !important; gap: 10px !important; }
+.contact-welcome { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 14px; width: 100%; }
+.saha-premium #contact .contact-welcome h2 { font-size: clamp(18px,2.2vw,26px) !important; }
+.saha-premium #contact .contact-welcome .arabic-welcome { margin: 0; max-width: 170px; font-family: 'Vazirmatn',Tahoma,Arial,sans-serif !important; font-size: 13px !important; font-weight: 400 !important; letter-spacing: normal; line-height: 1.8 !important; color: #f6dce7; }
+.saha-premium #contact .mini-contact-head > p { font-size: 12px !important; line-height: 1.8 !important; }
+.saha-premium #contact .mini-contact-head > .btn { min-height: 44px !important; padding: 8px 16px !important; font-size: 12px !important; }
+@media(max-width:650px) {
+ .contact-welcome { gap: 10px; }
+ .saha-premium #contact .contact-welcome .arabic-welcome { max-width: 124px; font-size: 11px !important; }
+ .mini-consult-inner { padding: 10px 16px; gap: 10px; }
+ .saha-premium #consult .mini-consult-inner h2 { font-size: 16px !important; }
+ .saha-premium #consult .mini-consult-inner p { font-size: 11px !important; }
+ .saha-premium #consult .mini-consult-link { padding-inline: 10px !important; font-size: 11px !important; }
+}
+.saha-premium #why .compact-why-grid > .gb { translate: none !important; transform: none !important; cursor: default; }
+.saha-premium #contact-info .contact-group { padding: 6px 8px !important; }
+.saha-premium #contact-info .contact-group-heading { line-height: 1.5; }
+.saha-premium #contact-info .contact-group-links a { min-height: 36px; }
