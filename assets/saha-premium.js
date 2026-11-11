@@ -188,7 +188,17 @@
       const playing = !!audio && !audio.paused;
       button.setAttribute('aria-pressed', String(playing)); button.disabled = pendingMusic;
       button.setAttribute('aria-label', playing ? 'قطع موسیقی بی‌کلام' : 'پخش موسیقی بی‌کلام');
-      text(button, pendingMusic ? '⋯' : playing ? 'Ⅱ' : '♫');
+      let icon = button.querySelector('[data-music-icon]');
+      if (!icon) {
+        icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        icon.setAttribute('data-music-icon', ''); icon.setAttribute('viewBox', '0 0 24 24');
+        icon.setAttribute('aria-hidden', 'true'); icon.setAttribute('focusable', 'false');
+        icon.append(document.createElementNS(icon.namespaceURI, 'path')); button.replaceChildren(icon);
+      }
+      const path = icon.firstElementChild;
+      const shape = playing ? 'M8 5v14M16 5v14' : 'M9 18V5l11-2v13M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3M20 16a3 3 0 1 1-3-3 3 3 0 0 1 3 3';
+      if (path.getAttribute('d') !== shape) path.setAttribute('d', shape);
+      button.setAttribute('aria-busy', String(pendingMusic));
       button.title = playing ? 'قطع موسیقی بی‌کلام' : 'پخش موسیقی بی‌کلام';
     });
     text(app.querySelector('.music-feedback'), musicError);
