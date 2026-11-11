@@ -21,7 +21,10 @@ async def main():
    await page.get_by_role('button',name='خدمات بعدی',exact=True).click();await page.wait_for_timeout(500);assert await page.locator('#service-cards').evaluate('(e)=>Math.abs(e.scrollLeft)>20')
    await page.get_by_role('button',name='نمایش خدمات پرتقاضا',exact=True).click();assert await page.locator('#services .svc').count()==3
    assert await page.locator('#package-cards>.card3').count()==4
-   await page.get_by_role('button',name='پکیج بعدی',exact=True).click();await page.wait_for_timeout(500);assert await page.locator('#package-cards').evaluate('(e)=>Math.abs(e.scrollLeft)>20')
+   overflowing=await page.locator('#package-cards').evaluate('(e)=>e.scrollWidth>e.clientWidth+1')
+   if overflowing:
+    await page.get_by_role('button',name='پکیج بعدی',exact=True).click();await page.wait_for_timeout(500);assert await page.locator('#package-cards').evaluate('(e)=>Math.abs(e.scrollLeft)>20')
+   else:assert await page.get_by_role('button',name='پکیج بعدی',exact=True).is_disabled()
    positions=await page.locator('#package-cards>.card3').evaluate_all('(els)=>els.map(e=>Math.round(e.getBoundingClientRect().top))');assert len(set(positions))==1,positions
    music=page.locator('[data-saha-music]');assert await music.get_attribute('aria-pressed')=='false';await music.click();await page.wait_for_function("document.querySelector('[data-saha-music]').getAttribute('aria-pressed')==='true'");assert len((await music.inner_text()).strip())<4;await music.click();assert await music.get_attribute('aria-pressed')=='false'
    await page.locator('#services').screenshot(path=f'/tmp/saha-compact-services-{width}.png')
