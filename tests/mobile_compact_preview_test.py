@@ -51,7 +51,7 @@ async def main():
    music=page.locator('[data-saha-music]');assert (await music.inner_text()).strip()=='';assert await music.locator('svg').count()==1
    await music.click();await page.wait_for_function("document.querySelector('[data-saha-music]').getAttribute('aria-pressed')==='true'");await music.click()
    await header.locator('.saha-more summary').click();assert await header.get_by_role('link',name='گالری نمونه‌کارها',exact=True).is_visible();await page.keyboard.press('Escape')
-   
+
    if await page.locator('a[href="#reviews"]').first.is_visible():await page.locator('a[href="#reviews"]').first.click()
    else:await page.locator('.compact-fold>summary').filter(has_text='نظر مشتریان').click()
    assert await page.locator('#reviews').evaluate('(e)=>e.closest("details").open')
