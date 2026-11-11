@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+.env.*
+var
+frontend/dist
+**/__pycache__
+.pytest_cache
+backend/tests
+tests
+backups
+*.pem
+*.key

@@ -1,0 +1,55 @@
+name: saha
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: saha
+      POSTGRES_USER: saha
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?رمز دیتابیس در .env لازم است}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U saha -d saha']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      DATABASE_URL: postgresql+psycopg://saha:${POSTGRES_PASSWORD}@db:5432/saha
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:?کلید مدیریت لازم است}
+      SAHA_BOOKING_ENABLED: ${SAHA_BOOKING_ENABLED:-0}
+      SAHA_AUDIO_UPLOADS: ${SAHA_AUDIO_UPLOADS:-0}
+      SAHA_AUDIO_UPLOAD_DIR: /app/var/audio-submissions
+      SAHA_PREVIEW: '0'
+    volumes:
+      - uploads:/app/var
+    ports:
+      - 127.0.0.1:8000:8000
+    depends_on:
+      db:
+        condition: service_healthy
+    command: [sh, -c, 'python -m backend.app.cli init-db && exec uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips=*']
+  web:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SAHA_DOMAIN: ${SAHA_DOMAIN:-sahabeauty.ir}
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+volumes:
+  postgres_data:
+  uploads:
+  caddy_data:
+  caddy_config:
