@@ -1,7 +1,7 @@
 (() => {
 'use strict';
 if(window.__sahaCompactCleanup)window.__sahaCompactCleanup();
-let frame=0;
+let frame=0,adminClicks=0,adminStarted=0;
 function syncArrows(){
  frame=0;
  document.querySelectorAll('[data-track]').forEach(arrow=>{
@@ -18,6 +18,11 @@ function syncArrows(){
 function schedule(){if(!frame)frame=requestAnimationFrame(syncArrows);}
 function click(event){
  if(!(event.target instanceof Element))return;
+ if(event.target.closest('footer [data-admin-entry-logo]')){
+  const now=performance.now();
+  if(!adminClicks||now-adminStarted>3000){adminClicks=0;adminStarted=now;}
+  if(++adminClicks===5){adminClicks=0;window.location.assign('/admin');return;}
+ }else adminClicks=0;
  const link=event.target.closest('a[href^="#"]');
  if(link){const target=document.getElementById(link.getAttribute('href').slice(1)),fold=target?.closest('.compact-fold');if(fold)fold.open=true;}
  const arrow=event.target.closest('[data-track]');
