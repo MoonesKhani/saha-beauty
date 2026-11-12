@@ -13,7 +13,7 @@ async def main():
    async def sequence(times,interrupt=False):
     await page.evaluate('''({times,interrupt})=>{
      const logo=document.querySelector('footer [data-admin-entry-logo] span'),original=performance.now;
-     try{for(let i=0;i<times.length;i++){performance.now=()=>times[i];logo.click();if(interrupt&&i===2)document.querySelector('footer p').click();}}
+     try{for(let i=0;i<times.length;i++){performance.now=()=>times[i];logo.click();if(interrupt&&i===2)document.querySelector('footer').click();}}
      finally{performance.now=original;}
     }''',{'times':times,'interrupt':interrupt})
    await home();before=await page.locator('footer').inner_text()
