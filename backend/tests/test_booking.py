@@ -72,3 +72,50 @@ def test_public_booking_rate_limit(setup):
  body=payload(availability(c,day).json()['slots'][0])
  results=[c.post('/api/v1/booking/reservations',json=body).status_code for _ in range(13)]
  assert results[:12]==[201]*12 and results[-1]==429
+
+def batch_body(c,day):
+ plan={'services':[{'service_code':'hair-color','duration_minutes':60}],'windows':[{'weekday':day.weekday(),'start_minute':540,'end_minute':780,'step_minutes':30}]}
+ assert c.put('/api/v1/admin/scheduling/02',json=plan,headers=AUTH).status_code==200
+ def slot(staff,service,index):return c.get('/api/v1/booking/availability',params={'staff_code':staff,'services':service,'day':str(day)}).json()['slots'][index]
+ return {'request_id':str(uuid4()),'customer_name':'مشتری چندخدمت','phone':'09123456789','items':[{'service_codes':['hair-braid'],'staff_code':'01','starts_at':slot('01','hair-braid',0)['starts_at']},{'service_codes':['hair-color'],'staff_code':'02','starts_at':slot('02','hair-color',2)['starts_at']}]}
+
+def test_batch_specialists_atomic_persistent_idempotent(setup):
+ c,settings,day=setup;body=batch_body(c,day)
+ r=c.post('/api/v1/booking/reservations/batch',json=body);assert r.status_code==201,r.text
+ refs=r.json()['references'];assert len(set(refs))==2 and r.json()['status']=='confirmed'
+ assert c.post('/api/v1/booking/reservations/batch',json=body).json()['references']==refs
+ records=c.get('/api/v1/admin/appointments',headers=AUTH).json()['items'];assert len(records)==2 and {r['staff_code'] for r in records}=={'01','02'}
+ assert set(c.get('/api/v1/admin/booking-notifications',headers=AUTH).json()['ids'])==set(refs)
+ with TestClient(create_app(settings)) as restarted:assert set(restarted.post('/api/v1/booking/reservations/batch',json=body).json()['references'])==set(refs)
+ catalog=c.get('/api/v1/booking/catalog').json();assert 'hair-color' in next(m for m in catalog['team'] if m['code']=='02')['service_codes']
+
+def test_batch_rolls_back_first_if_second_is_busy(setup):
+ c,_,day=setup;body=batch_body(c,day)
+ busy={**body['items'][1],'request_id':str(uuid4()),'customer_name':'مشتری دیگر','phone':'09123456780'}
+ assert c.post('/api/v1/booking/reservations',json=busy).status_code==201
+ r=c.post('/api/v1/booking/reservations/batch',json=body);assert r.status_code==409,r.text
+ records=c.get('/api/v1/admin/appointments',headers=AUTH).json()['items'];assert len(records)==1 and records[0]['customer_name']=='مشتری دیگر'
+ assert c.get('/api/v1/booking/availability',params={'staff_code':'01','services':'hair-braid','day':str(day)}).json()['slots'][0]['state']=='available'
+
+def test_batch_rejects_customer_overlap_and_cross_origin(setup):
+ c,_,day=setup;body=batch_body(c,day);body['items'][1]['starts_at']=body['items'][0]['starts_at']
+ assert c.post('/api/v1/booking/reservations/batch',json=body).status_code==409
+ assert c.get('/api/v1/admin/appointments',headers=AUTH).json()['total']==0
+ assert c.post('/api/v1/booking/reservations/batch',json=body,headers={'Origin':'https://other.example'}).status_code==403
+ assert c.post('/api/v1/booking/reservations/batch',json={**body,'items':[body['items'][0],body['items'][0]]}).status_code==422
+
+def test_review_is_private_and_visible_to_authenticated_manager(setup):
+ c,_,_=setup;body={'request_id':str(uuid4()),'customer_name':'مشتری نظر','phone':'۰۹۱۲۳۴۵۶۷۸۹','message':'برخورد تیم خیلی خوب بود.'}
+ r=c.post('/api/v1/reviews',json=body);assert r.status_code==201 and r.json()['published'] is False
+ assert c.post('/api/v1/reviews',json=body).json()['reference']==r.json()['reference']
+ assert c.get('/api/v1/admin/consultations').status_code==401
+ rows=c.get('/api/v1/admin/consultations',headers=AUTH).json()['items'];assert len(rows)==1 and rows[0]['topic']=='نظر مشتری' and rows[0]['message']==body['message']
+ assert c.post('/api/v1/reviews',json={**body,'message':'نظر تغییر یافته'}).status_code==409
+ assert c.post('/api/v1/reviews',json={**body,'request_id':str(uuid4())},headers={'Origin':'https://other.example'}).status_code==403
+
+def test_batch_two_clients_cannot_double_book(setup):
+ c,settings,day=setup;body=batch_body(c,day)
+ def reserve(_):
+  with TestClient(create_app(settings)) as other:return other.post('/api/v1/booking/reservations/batch',json={**body,'request_id':str(uuid4())}).status_code
+ with ThreadPoolExecutor(max_workers=2) as pool:assert sorted(pool.map(reserve,range(2)))==[201,409]
+ assert c.get('/api/v1/admin/appointments',headers=AUTH).json()['total']==2

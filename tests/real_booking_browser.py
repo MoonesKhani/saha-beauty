@@ -26,8 +26,8 @@ async def main():
     browser=await p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'],proxy={'server':os.environ['HTTPS_PROXY'],'bypass':'localhost,127.0.0.1'})
     for width in [390,1440]:
      context=await browser.new_context(viewport={'width':width,'height':1000});page=await context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-     await page.goto(base+'/booking.html');await page.wait_for_function("document.querySelector('#reservation-status').textContent.includes('متصل است')")
-     await page.get_by_label('بافت',exact=True).check();await page.locator('#reservation-staff').select_option('01');await page.locator('#reservation-day').select_option(str(day))
+     await page.goto(base+'/booking.html');await page.wait_for_function("document.querySelector('#reservation-status').textContent.includes('دلخواهت')")
+     await page.get_by_label('بافت',exact=True).check();await page.locator('input[name=staff-hair-braid][value="01"]').check();await page.locator('#reservation-day').select_option(str(day))
      await page.locator('#availability button:not([disabled])').first.click();await page.locator('#reservation-name').fill('مشتری آزمون مرورگر '+str(width));await page.locator('#reservation-phone').fill('09123456789');await page.locator('#reserve-confirm').click()
      await page.wait_for_function("document.querySelector('#reservation-status').textContent.includes('کد پیگیری')")
      await page.locator('#availability button[disabled]').first.wait_for()

@@ -2,8 +2,8 @@
 from pathlib import Path
 import hashlib,json,re
 ROOT=Path(__file__).resolve().parents[1]
-FILES=['saha-premium.css','saha-mobile-v2.css','saha-premium.js','saha-compact.js','saha-collections.css','saha-collections.js','saha-secondary.js','saha-trends.js']
-PAGES=['index.html','gallery.html','discounts.html','ai-consultation.html','invite.html','daily.html','certificates.html','trends.html']
+FILES=['saha-premium.css','saha-mobile-v2.css','saha-premium.js','saha-compact.js','saha-collections.css','saha-collections.js','saha-secondary.js','saha-trends.js','saha-reservation.js','saha-reservation-catalog.js','saha-booking.css','saha-team-member.js']
+PAGES=['index.html','gallery.html','discounts.html','ai-consultation.html','invite.html','daily.html','certificates.html','trends.html','booking.html','booking-demo.html','team-member.html']
 def build():
  versions={};counts={name:0 for name in FILES}
  for name in FILES:

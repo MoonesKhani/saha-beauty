@@ -4,12 +4,12 @@ from collections import deque
 from threading import Lock
 import time as clock
 from hashlib import sha256
-from uuid import UUID
+from uuid import UUID,uuid5
 from zoneinfo import ZoneInfo
 from fastapi import Depends,HTTPException,Query,Request
 from pydantic import Field,model_validator
 from sqlalchemy import select,delete,update
-from .models import Service,TeamMember,Appointment,AppointmentService,StaffService,StaffSchedule,BookingNotice
+from .models import Service,TeamMember,Appointment,AppointmentService,StaffService,StaffSchedule,BookingNotice,Consultation
 from .management import ContactInput,Input
 TZ=ZoneInfo('Asia/Tehran')
 class Assignment(Input):
@@ -41,6 +41,25 @@ class BookingIn(ContactInput):
   if self.starts_at.tzinfo is None:raise ValueError('منطقه زمانی لازم است.')
   if len(set(self.service_codes))!=len(self.service_codes):raise ValueError('خدمت تکراری است.')
   return self
+
+class BookingItem(Input):
+ service_codes:list[str]=Field(min_length=1,max_length=1)
+ staff_code:str=Field(min_length=1,max_length=36)
+ starts_at:datetime
+ @model_validator(mode='after')
+ def aware(self):
+  if self.starts_at.tzinfo is None:raise ValueError('منطقه زمانی لازم است.')
+  return self
+class BatchBooking(ContactInput):
+ request_id:UUID
+ items:list[BookingItem]=Field(min_length=1,max_length=16)
+ @model_validator(mode='after')
+ def unique(self):
+  if len({x.service_codes[0] for x in self.items})!=len(self.items):raise ValueError('خدمت تکراری است.')
+  return self
+class ReviewIn(ContactInput):
+ request_id:UUID
+ message:str=Field(min_length=2,max_length=2000)
 
 def mount_booking(app,settings,session,require_admin):
  attempts={};guard=Lock()
@@ -89,7 +108,7 @@ def mount_booking(app,settings,session,require_admin):
   return rows
  @app.get('/api/v1/booking/catalog')
  def catalog(db=Depends(session)):
-  return {'enabled':settings.booking_enabled and len(settings.admin_api_token)>=32,'payment_enabled':False,'services':[{'code':s.code,'name':s.name,'category':'مو' if s.code.startswith('hair-') else 'سایر خدمات'} for s in db.scalars(select(Service).where(Service.is_active.is_(True),Service.code.not_in(['01','06'])).order_by(Service.sort_order))],'team':[{'code':s.code,'name':s.name,'role':s.role} for s in db.scalars(select(TeamMember).where(TeamMember.is_active.is_(True)).order_by(TeamMember.sort_order))]}
+  return {'enabled':settings.booking_enabled and len(settings.admin_api_token)>=32,'payment_enabled':False,'batch_enabled':True,'reviews_enabled':True,'services':[{'code':s.code,'name':s.name,'category':'مو' if s.code.startswith('hair-') else 'سایر خدمات'} for s in db.scalars(select(Service).where(Service.is_active.is_(True),Service.code.not_in(['01','06'])).order_by(Service.sort_order))],'team':[{'code':s.code,'name':s.name,'role':s.role,'service_codes':list(db.scalars(select(StaffService.service_code).where(StaffService.staff_code==s.code)))} for s in db.scalars(select(TeamMember).where(TeamMember.is_active.is_(True)).order_by(TeamMember.sort_order))]}
  @app.get('/api/v1/booking/availability')
  def availability(staff_code:str=Query(max_length=36),services:str=Query(max_length=600),day:date=Query(),db=Depends(session)):
   enabled();return {'slots':slots(db,staff_code,services.split(','),day),'timezone':'Asia/Tehran'}
@@ -114,6 +133,46 @@ def mount_booking(app,settings,session,require_admin):
   db.add(BookingNotice(appointment_id=appointment.id,seen=False))
   db.add_all([AppointmentService(appointment_id=appointment.id,service_code=code) for code in data.service_codes]);db.commit()
   return {'reference':appointment.id,'status':'confirmed','payment_required':False}
+
+ @app.post('/api/v1/booking/reservations/batch',status_code=201)
+ def reserve_batch(data:BatchBooking,request:Request,db=Depends(session)):
+  enabled()
+  origin=request.headers.get('origin')
+  if origin and origin!=str(request.base_url).rstrip('/'):raise HTTPException(403,'درخواست باید از همین سایت ارسال شود.')
+  throttle(request)
+  staff_codes=sorted({item.staff_code for item in data.items})
+  lock(db,staff_codes[0])
+  for code in staff_codes[1:]:
+   member=db.scalar(select(TeamMember).where(TeamMember.code==code).with_for_update())
+   if not member or not member.is_active:raise HTTPException(422,'متخصص فعال انتخاب کنید.')
+  references=[];windows=[]
+  for item in data.items:
+   identity=str(uuid5(data.request_id,item.service_codes[0]));old=db.get(Appointment,identity)
+   if old:
+    start=old.starts_at if old.starts_at.tzinfo else old.starts_at.replace(tzinfo=timezone.utc)
+    end=old.ends_at if old.ends_at.tzinfo else old.ends_at.replace(tzinfo=timezone.utc)
+    if old.phone!=data.phone or old.customer_name!=data.customer_name or old.staff_code!=item.staff_code or old.service_code!=item.service_codes[0] or start!=item.starts_at or old.status!='confirmed':raise HTTPException(409,'شناسه درخواست قبلاً استفاده شده است.')
+   else:
+    choices=slots(db,item.staff_code,item.service_codes,item.starts_at.astimezone(TZ).date())
+    chosen=next((x for x in choices if datetime.fromisoformat(x['starts_at'])==item.starts_at),None)
+    if not chosen or chosen['state']!='available':raise HTTPException(409,'یکی از بازه‌ها آزاد نیست؛ هیچ نوبتی ثبت نشد. جدول را تازه کنید.')
+    start=item.starts_at.astimezone(timezone.utc);end=datetime.fromisoformat(chosen['ends_at']).astimezone(timezone.utc)
+    db.add(Appointment(id=identity,customer_name=data.customer_name,phone=data.phone,service_code=item.service_codes[0],staff_code=item.staff_code,starts_at=start,ends_at=end,status='confirmed'));db.flush()
+    db.add(BookingNotice(appointment_id=identity,seen=False));db.add(AppointmentService(appointment_id=identity,service_code=item.service_codes[0]))
+   if any(a<end and b>start for a,b in windows):raise HTTPException(409,'زمان خدمات مشتری هم‌پوشانی دارد؛ هیچ نوبت جدیدی ثبت نشد.')
+   windows.append((start,end));references.append(identity)
+  db.commit();return {'references':references,'status':'confirmed','payment_required':False}
+ @app.post('/api/v1/reviews',status_code=201)
+ def submit_review(data:ReviewIn,request:Request,db=Depends(session)):
+  if len(settings.admin_api_token)<32:raise HTTPException(503,'دریافت نظر هنوز فعال نیست.')
+  origin=request.headers.get('origin')
+  if origin and origin!=str(request.base_url).rstrip('/'):raise HTTPException(403,'درخواست باید از همین سایت ارسال شود.')
+  throttle(request)
+  identity=str(data.request_id);old=db.get(Consultation,identity)
+  if old and (old.phone!=data.phone or old.customer_name!=data.customer_name or old.message!=data.message or old.topic!='نظر مشتری'):raise HTTPException(409,'شناسه درخواست قبلاً استفاده شده است.')
+  if not old:
+   db.add(Consultation(id=identity,customer_name=data.customer_name,phone=data.phone,topic='نظر مشتری',message=data.message,status='new'));db.commit()
+  return {'status':'received','reference':identity,'published':False}
  @app.get('/api/v1/admin/booking-notifications',dependencies=[Depends(require_admin)])
  def notices(db=Depends(session)):
   return {'ids':list(db.scalars(select(BookingNotice.appointment_id).where(BookingNotice.seen.is_(False))))}
