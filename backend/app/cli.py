@@ -29,6 +29,9 @@ def seed_database(url):
                 for row in data[key]:
                     if db.get(model, row['code']) is None:
                         db.add(model(**row))
+            db.flush()
+            from .package_seed import seed_packages
+            seed_packages(db)
     finally:
         engine.dispose()
 

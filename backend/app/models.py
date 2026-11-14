@@ -1,4 +1,4 @@
-from sqlalchemy import String, Text, Integer, CheckConstraint, Boolean
+from sqlalchemy import String, Text, Integer, CheckConstraint, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -22,6 +22,7 @@ class TeamMember(Base):
     sort_order: Mapped[int] = mapped_column(Integer, unique=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     revision: Mapped[int] = mapped_column(Integer, default=1)
+    parent_code: Mapped[str | None] = mapped_column(ForeignKey('team_members.code'))
 
 from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey
@@ -88,3 +89,38 @@ class BookingNotice(Base):
     __tablename__='booking_notices'
     appointment_id: Mapped[str] = mapped_column(ForeignKey('appointments.id'),primary_key=True)
     seen: Mapped[bool] = mapped_column(Boolean,default=False)
+
+class Package(Base):
+    __tablename__ = 'packages'
+    code: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(20))
+    tier: Mapped[str] = mapped_column(String(20))
+    description: Mapped[str] = mapped_column(Text)
+    price_toman: Mapped[int | None] = mapped_column(Integer)
+    service_codes: Mapped[list] = mapped_column(JSON)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    sort_order: Mapped[int] = mapped_column(Integer, unique=True)
+    __table_args__ = (CheckConstraint('price_toman IS NULL OR price_toman >= 0', name='package_price'),)
+
+class GalleryImage(Base):
+    __tablename__ = 'gallery_images'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    title: Mapped[str] = mapped_column(String(120))
+    src: Mapped[str] = mapped_column(String(500))
+    category: Mapped[str] = mapped_column(String(20))
+    staff_code: Mapped[str | None] = mapped_column(ForeignKey('team_members.code'))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+
+class StaffExpertise(Base):
+    __tablename__ = 'staff_expertise'
+    staff_code: Mapped[str] = mapped_column(ForeignKey('team_members.code'), primary_key=True)
+    service_code: Mapped[str] = mapped_column(ForeignKey('services.code'), primary_key=True)
+
+class BookingPrice(Base):
+    __tablename__ = 'booking_prices'
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    selection: Mapped[dict] = mapped_column(JSON)
+    quote: Mapped[dict] = mapped_column(JSON)

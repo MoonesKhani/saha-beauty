@@ -9,8 +9,9 @@ from zoneinfo import ZoneInfo
 from fastapi import Depends,HTTPException,Query,Request
 from pydantic import Field,model_validator
 from sqlalchemy import select,delete,update
-from .models import Service,TeamMember,Appointment,AppointmentService,StaffService,StaffSchedule,BookingNotice,Consultation
+from .models import Service,TeamMember,Appointment,AppointmentService,StaffService,StaffSchedule,BookingNotice,Consultation,StaffExpertise,BookingPrice
 from .management import ContactInput,Input
+from .packages import eligible_staff, NAIL_CODES, quote_package
 TZ=ZoneInfo('Asia/Tehran')
 class Assignment(Input):
  service_code:str=Field(max_length=36)
@@ -25,13 +26,18 @@ class Window(Input):
   if self.end_minute<=self.start_minute:raise ValueError('پایان باید بعد از شروع باشد.')
   return self
 class Schedule(Input):
+ specialty_codes:list[str]|None=Field(default=None,max_length=60)
  services:list[Assignment]=Field(max_length=30)
  windows:list[Window]=Field(max_length=7)
  @model_validator(mode='after')
  def unique(self):
   if len({s.service_code for s in self.services})!=len(self.services) or len({s.weekday for s in self.windows})!=len(self.windows):raise ValueError('خدمت یا روز تکراری است.')
   return self
-class BookingIn(ContactInput):
+class PackageSelection(ContactInput):
+ quote_version:str|None=Field(default=None,min_length=64,max_length=64)
+ package_code:str|None=Field(default=None,max_length=36)
+
+class BookingIn(PackageSelection):
  request_id:UUID
  service_codes:list[str]=Field(min_length=1,max_length=16)
  staff_code:str=Field(max_length=36)
@@ -50,13 +56,16 @@ class BookingItem(Input):
  def aware(self):
   if self.starts_at.tzinfo is None:raise ValueError('منطقه زمانی لازم است.')
   return self
-class BatchBooking(ContactInput):
+class BatchBooking(PackageSelection):
  request_id:UUID
  items:list[BookingItem]=Field(min_length=1,max_length=16)
  @model_validator(mode='after')
  def unique(self):
   if len({x.service_codes[0] for x in self.items})!=len(self.items):raise ValueError('خدمت تکراری است.')
   return self
+class ExpertiseInput(Input):
+ service_codes:list[str]=Field(max_length=60)
+
 class ReviewIn(ContactInput):
  request_id:UUID
  message:str=Field(min_length=2,max_length=2000)
@@ -88,6 +97,7 @@ def mount_booking(app,settings,session,require_admin):
   services=list(db.scalars(select(Service).where(Service.code.in_(codes),Service.is_active.is_(True))))
   assignments=list(db.scalars(select(StaffService).where(StaffService.staff_code==staff_code,StaffService.service_code.in_(codes))))
   if len(services)!=len(codes) or any(s.code in ['01','06'] for s in services):raise HTTPException(422,'خدمت رزروپذیر انتخاب کنید.')
+  if any(not eligible_staff(db,staff_code,c) for c in codes):raise HTTPException(409,'متخصص برای این خدمت تخصص تأییدشده ندارد.')
   if len(assignments)!=len(codes):raise HTTPException(409,'متخصص برای همه خدمات انتخابی برنامه تأییدشده ندارد.')
   duration=sum(a.duration_minutes for a in assignments)
   window=db.get(StaffSchedule,(staff_code,day.weekday()))
@@ -106,9 +116,22 @@ def mount_booking(app,settings,session,require_admin):
    if start>datetime.now(TZ):rows.append({'starts_at':start.isoformat(),'ends_at':finish.isoformat(),'state':'occupied' if busy else 'available'})
    start+=timedelta(minutes=window.step_minutes)
   return rows
+ def price_booking(db,data,codes):
+  old=db.get(BookingPrice,str(data.request_id))
+  selection={'package_code':data.package_code,'service_codes':sorted(codes)}
+  if old:
+   if old.selection!=selection:raise HTTPException(409,'شناسه درخواست قبلاً برای ترکیب دیگری استفاده شده است.')
+   return old.quote or None
+  if not data.package_code:
+   db.add(BookingPrice(request_id=str(data.request_id),selection=selection,quote={}))
+   return None
+  quote=quote_package(db,data.package_code,codes)
+  if data.quote_version is not None and data.quote_version!=quote['quote_version']:raise HTTPException(409,'تعرفه یا پکیج تغییر کرده است؛ صفحه را تازه و قیمت جدید را بررسی کنید.')
+  if quote['total_toman'] is None:raise HTTPException(409,'قیمت نهایی پکیج مشخص نیست؛ تعرفه‌ها و خدمات باید از پنل تکمیل شوند.')
+  db.add(BookingPrice(request_id=str(data.request_id),selection=selection,quote=quote));return quote
  @app.get('/api/v1/booking/catalog')
  def catalog(db=Depends(session)):
-  return {'enabled':settings.booking_enabled and len(settings.admin_api_token)>=32,'payment_enabled':False,'batch_enabled':True,'reviews_enabled':True,'services':[{'code':s.code,'name':s.name,'category':'مو' if s.code.startswith('hair-') else 'سایر خدمات'} for s in db.scalars(select(Service).where(Service.is_active.is_(True),Service.code.not_in(['01','06'])).order_by(Service.sort_order))],'team':[{'code':s.code,'name':s.name,'role':s.role,'service_codes':list(db.scalars(select(StaffService.service_code).where(StaffService.staff_code==s.code)))} for s in db.scalars(select(TeamMember).where(TeamMember.is_active.is_(True)).order_by(TeamMember.sort_order))]}
+  return {'enabled':settings.booking_enabled and len(settings.admin_api_token)>=32,'payment_enabled':False,'batch_enabled':True,'reviews_enabled':True,'services':[{'code':s.code,'name':s.name,'price_toman':s.price_toman,'category':'مو' if s.code.startswith('hair-') else 'سایر خدمات'} for s in db.scalars(select(Service).where(Service.is_active.is_(True),Service.code.not_in(['01','06'])).order_by(Service.sort_order))],'team':[{'code':s.code,'name':s.name,'role':s.role,'bio':s.bio,'parent_code':s.parent_code,'service_codes':[c for c in db.scalars(select(StaffExpertise.service_code).where(StaffExpertise.staff_code==s.code)) if c not in NAIL_CODES or s.code=='02']} for s in db.scalars(select(TeamMember).where(TeamMember.is_active.is_(True)).order_by(TeamMember.sort_order))]}
  @app.get('/api/v1/booking/availability')
  def availability(staff_code:str=Query(max_length=36),services:str=Query(max_length=600),day:date=Query(),db=Depends(session)):
   enabled();return {'slots':slots(db,staff_code,services.split(','),day),'timezone':'Asia/Tehran'}
@@ -119,12 +142,13 @@ def mount_booking(app,settings,session,require_admin):
   if origin and origin!=str(request.base_url).rstrip('/'):raise HTTPException(403,'درخواست باید از همین سایت ارسال شود.')
   throttle(request)
   lock(db,data.staff_code)
+  quote=price_booking(db,data,data.service_codes)
   old=db.get(Appointment,str(data.request_id))
   if old:
    previous=list(db.scalars(select(AppointmentService.service_code).where(AppointmentService.appointment_id==old.id)))
    start=old.starts_at if old.starts_at.tzinfo else old.starts_at.replace(tzinfo=timezone.utc)
    if old.phone!=data.phone or start!=data.starts_at or old.staff_code!=data.staff_code or sorted(previous)!=sorted(data.service_codes):raise HTTPException(409,'شناسه درخواست قبلاً استفاده شده است.')
-   return {'reference':old.id,'status':old.status,'payment_required':False}
+   return {'reference':old.id,'status':old.status,'payment_required':False, 'quote':quote}
   choices=slots(db,data.staff_code,data.service_codes,data.starts_at.astimezone(TZ).date())
   chosen=next((s for s in choices if datetime.fromisoformat(s['starts_at'])==data.starts_at),None)
   if not chosen or chosen['state']!='available':raise HTTPException(409,'این بازه آزاد نیست؛ جدول را تازه کنید.')
@@ -132,7 +156,7 @@ def mount_booking(app,settings,session,require_admin):
   db.add(appointment);db.flush()
   db.add(BookingNotice(appointment_id=appointment.id,seen=False))
   db.add_all([AppointmentService(appointment_id=appointment.id,service_code=code) for code in data.service_codes]);db.commit()
-  return {'reference':appointment.id,'status':'confirmed','payment_required':False}
+  return {'reference':appointment.id,'status':'confirmed','payment_required':False, 'quote':quote}
 
  @app.post('/api/v1/booking/reservations/batch',status_code=201)
  def reserve_batch(data:BatchBooking,request:Request,db=Depends(session)):
@@ -145,6 +169,7 @@ def mount_booking(app,settings,session,require_admin):
   for code in staff_codes[1:]:
    member=db.scalar(select(TeamMember).where(TeamMember.code==code).with_for_update())
    if not member or not member.is_active:raise HTTPException(422,'متخصص فعال انتخاب کنید.')
+  quote=price_booking(db,data,[item.service_codes[0] for item in data.items])
   references=[];windows=[]
   for item in data.items:
    identity=str(uuid5(data.request_id,item.service_codes[0]));old=db.get(Appointment,identity)
@@ -161,7 +186,7 @@ def mount_booking(app,settings,session,require_admin):
     db.add(BookingNotice(appointment_id=identity,seen=False));db.add(AppointmentService(appointment_id=identity,service_code=item.service_codes[0]))
    if any(a<end and b>start for a,b in windows):raise HTTPException(409,'زمان خدمات مشتری هم‌پوشانی دارد؛ هیچ نوبت جدیدی ثبت نشد.')
    windows.append((start,end));references.append(identity)
-  db.commit();return {'references':references,'status':'confirmed','payment_required':False}
+  db.commit();return {'references':references,'status':'confirmed','payment_required':False, 'quote':quote}
  @app.post('/api/v1/reviews',status_code=201)
  def submit_review(data:ReviewIn,request:Request,db=Depends(session)):
   if len(settings.admin_api_token)<32:raise HTTPException(503,'دریافت نظر هنوز فعال نیست.')
@@ -189,5 +214,32 @@ def mount_booking(app,settings,session,require_admin):
   lock(db,staff_code)
   valid=set(db.scalars(select(Service.code).where(Service.is_active.is_(True),Service.code.not_in(['01','06']))))
   if any(s.service_code not in valid for s in data.services):raise HTTPException(422,'خدمت فعال و رزروپذیر انتخاب کنید.')
+  specialty_codes=data.specialty_codes if data.specialty_codes is not None else [s.service_code for s in data.services]
+  if len(set(specialty_codes))!=len(specialty_codes) or any(code not in valid for code in specialty_codes):raise HTTPException(422,'تخصص‌های معتبر انتخاب کنید.')
+  if any(s.service_code not in specialty_codes for s in data.services):raise HTTPException(422,'برای خدمات برنامه‌دار تخصص تأییدشده انتخاب کنید.')
+  if staff_code!='02' and any(code in NAIL_CODES for code in specialty_codes):raise HTTPException(422,'ناخن، مانیکور، پدیکور و ژلیش فقط برای کوثر عبدالخانی است.')
+  if data.specialty_codes is not None:
+   db.execute(delete(StaffExpertise).where(StaffExpertise.staff_code==staff_code))
+   db.add_all([StaffExpertise(staff_code=staff_code,service_code=code) for code in specialty_codes])
+  else:
+   for code in specialty_codes:
+    if not db.get(StaffExpertise,(staff_code,code)):db.add(StaffExpertise(staff_code=staff_code,service_code=code))
   db.execute(delete(StaffService).where(StaffService.staff_code==staff_code));db.execute(delete(StaffSchedule).where(StaffSchedule.staff_code==staff_code))
   db.add_all([StaffService(staff_code=staff_code,**s.model_dump()) for s in data.services]);db.add_all([StaffSchedule(staff_code=staff_code,**s.model_dump()) for s in data.windows]);db.commit();return {'status':'saved'}
+
+ @app.get('/api/v1/admin/expertise/{staff_code}',dependencies=[Depends(require_admin)])
+ def expertise(staff_code:str,db=Depends(session)):
+  if not db.get(TeamMember,staff_code):raise HTTPException(404,'متخصص پیدا نشد.')
+  return {'service_codes':list(db.scalars(select(StaffExpertise.service_code).where(StaffExpertise.staff_code==staff_code)))}
+ @app.put('/api/v1/admin/expertise/{staff_code}',dependencies=[Depends(require_admin)])
+ def save_expertise(staff_code:str,data:ExpertiseInput,db=Depends(session)):
+  lock(db,staff_code)
+  if len(set(data.service_codes))!=len(data.service_codes):raise HTTPException(422,'خدمت تکراری است.')
+  for code in data.service_codes:
+   service=db.get(Service,code)
+   if not service or not service.is_active or code in ['01','06']:raise HTTPException(422,'خدمت فعال انتخاب کنید.')
+   if code in NAIL_CODES and staff_code!='02':raise HTTPException(422,'این خدمات فقط برای کوثر عبدالخانی است.')
+  db.execute(delete(StaffExpertise).where(StaffExpertise.staff_code==staff_code))
+  db.execute(delete(StaffService).where(StaffService.staff_code==staff_code,StaffService.service_code.not_in(data.service_codes)))
+  db.add_all([StaffExpertise(staff_code=staff_code,service_code=c) for c in data.service_codes]);db.commit()
+  return {'status':'saved'}

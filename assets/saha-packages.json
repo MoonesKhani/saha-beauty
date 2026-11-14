@@ -1,0 +1,149 @@
+[
+  {
+    "code": "bride-normal",
+    "name": "عروس · عادی",
+    "category": "bride",
+    "tier": "عادی",
+    "price_toman": 15000000,
+    "service_codes": [
+      "consultation",
+      "04",
+      "hair-updo",
+      "11"
+    ],
+    "description": "عروس · عادی",
+    "revision": 1
+  },
+  {
+    "code": "bride-vip",
+    "name": "عروس · VIP",
+    "category": "bride",
+    "tier": "VIP",
+    "price_toman": 25000000,
+    "service_codes": [
+      "consultation",
+      "04",
+      "hair-updo",
+      "11",
+      "hand-rejuvenation",
+      "02",
+      "hair-color"
+    ],
+    "description": "عروس · VIP",
+    "revision": 1
+  },
+  {
+    "code": "bride-cip",
+    "name": "عروس · CIP",
+    "category": "bride",
+    "tier": "CIP",
+    "price_toman": 45000000,
+    "service_codes": [
+      "consultation",
+      "04",
+      "lens-lashes",
+      "hair-updo",
+      "11",
+      "decollete-facial",
+      "hand-rejuvenation",
+      "02",
+      "pedicure",
+      "toe-gel",
+      "hair-color"
+    ],
+    "description": "عروس · CIP",
+    "revision": 1
+  },
+  {
+    "code": "engagement-normal",
+    "name": "عروس عقدی · عادی",
+    "category": "engagement",
+    "tier": "عادی",
+    "price_toman": 8000000,
+    "service_codes": [
+      "04",
+      "hair-updo",
+      "11"
+    ],
+    "description": "عروس عقدی · عادی",
+    "revision": 1
+  },
+  {
+    "code": "engagement-vip",
+    "name": "عروس عقدی · VIP",
+    "category": "engagement",
+    "tier": "VIP",
+    "price_toman": 15000000,
+    "service_codes": [
+      "04",
+      "hair-updo",
+      "11",
+      "hand-rejuvenation",
+      "02"
+    ],
+    "description": "عروس عقدی · VIP",
+    "revision": 1
+  },
+  {
+    "code": "engagement-cip",
+    "name": "عروس عقدی · CIP",
+    "category": "engagement",
+    "tier": "CIP",
+    "price_toman": 23000000,
+    "service_codes": [
+      "04",
+      "hair-updo",
+      "11",
+      "hand-rejuvenation",
+      "02",
+      "lens-lashes",
+      "facial"
+    ],
+    "description": "عروس عقدی · CIP",
+    "revision": 1
+  },
+  {
+    "code": "companion-normal",
+    "name": "همراه عروس · عادی",
+    "category": "companion",
+    "tier": "عادی",
+    "price_toman": 3000000,
+    "service_codes": [],
+    "description": "خدمات همراه عروس از پنل تعریف می‌شوند.",
+    "revision": 1
+  },
+  {
+    "code": "companion-vip",
+    "name": "همراه عروس · VIP",
+    "category": "companion",
+    "tier": "VIP",
+    "price_toman": 3500000,
+    "service_codes": [],
+    "description": "خدمات همراه عروس از پنل تعریف می‌شوند.",
+    "revision": 1
+  },
+  {
+    "code": "companion-cip",
+    "name": "همراه عروس · CIP",
+    "category": "companion",
+    "tier": "CIP",
+    "price_toman": 4000000,
+    "service_codes": [],
+    "description": "خدمات همراه عروس از پنل تعریف می‌شوند.",
+    "revision": 1
+  },
+  {
+    "code": "birthday",
+    "name": "پکیج تولد",
+    "category": "birthday",
+    "tier": "تولد",
+    "price_toman": null,
+    "service_codes": [
+      "hair-updo",
+      "04",
+      "02"
+    ],
+    "description": "پکیج تولد",
+    "revision": 1
+  }
+]

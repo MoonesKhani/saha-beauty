@@ -31,6 +31,8 @@ def create_app(settings=None):
     @app.middleware('http')
     async def private_cache_policy(request, call_next):
         response = await call_next(request)
+        if request.url.path.startswith('/api/v1/'):
+            response.headers['Cache-Control'] = 'no-store'
         if request.url.path.startswith(('/admin','/api/v1/admin')):
             response.headers['Cache-Control'] = 'no-store'
             response.headers['X-Frame-Options'] = 'DENY'
@@ -56,7 +58,7 @@ def create_app(settings=None):
         try:
             with engine.connect() as connection:
                 version = connection.execute(text('SELECT version_num FROM alembic_version')).scalar_one()
-                if version != '0003_booking':
+                if version != '0004_packages':
                     raise HTTPException(503, 'نسخه پایگاه داده آماده نیست.')
             return {'status': 'ok', 'database': 'ready'}
         except SQLAlchemyError:
@@ -102,6 +104,9 @@ def create_app(settings=None):
     from .audio_uploads import mount_audio_uploads
     mount_audio_uploads(app, settings, require_admin)
 
+    from .packages import mount_packages
+    mount_packages(app, session)
+
     from .booking import mount_booking
     mount_booking(app, settings, session, require_admin)
 
@@ -126,7 +131,7 @@ def create_app(settings=None):
 
     @app.get('/{page}', response_class=HTMLResponse, include_in_schema=False)
     def leisure_page(page: str, demo: bool=False):
-        if page in ['team-member.html','daily.html','certificates.html','trends.html','ai-consultation.html','invite.html','gallery.html','discounts.html','booking.html','booking-demo.html','admin-access.html','scheduling.html','admin-demo.html','group-visit.html','playlist.html']:
+        if page in ['bridal.html','birthday.html','team-member.html','daily.html','certificates.html','trends.html','ai-consultation.html','invite.html','gallery.html','discounts.html','booking.html','booking-demo.html','admin-access.html','scheduling.html','admin-demo.html','group-visit.html','playlist.html']:
             return HTMLResponse((settings.frontend_dir / page).read_text(),headers={'Cache-Control':'no-store'})
         if (demo and not settings.preview_enabled) or page not in ['buffet','playlist','products']:
             raise HTTPException(404,'صفحه پیدا نشد.')

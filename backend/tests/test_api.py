@@ -28,8 +28,8 @@ def test_catalog_preserves_real_landing_data(catalog_app):
     response = client.get('/api/v1/catalog')
     assert response.status_code == 200
     data = response.json()
-    assert len(data['services']) == len(expected['services']) and len(data['team']) == 7
-    assert [(r['code'], r['name'], r['description']) for r in data['services']] == [(r['code'], r['name'], r['description']) for r in expected['services']]
+    assert len(data['services']) == len(expected['services']) + 9 and len(data['team']) == 9
+    assert [(r['code'], r['name'], r['description']) for r in data['services'][:len(expected['services'])]] == [(r['code'], r['name'], r['description']) for r in expected['services']]
     assert client.get('/health/ready').json() == {'status': 'ok', 'database': 'ready'}
 
 
@@ -73,7 +73,7 @@ def test_admin_disabled_by_default_and_no_health_data_endpoint(catalog_app):
     engine = make_engine(url)
     with engine.connect() as connection:
         from sqlalchemy import inspect
-        assert set(inspect(connection).get_table_names()) == {'services', 'team_members', 'alembic_version','appointments','consultations','offers','staff_services','staff_schedules','appointment_services','booking_notices'}
+        assert set(inspect(connection).get_table_names()) == {'services', 'team_members', 'alembic_version','appointments','consultations','offers','staff_services','staff_schedules','appointment_services','booking_notices','packages','gallery_images','staff_expertise','booking_prices'}
     engine.dispose()
 
 

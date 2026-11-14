@@ -18,9 +18,13 @@ class TeamOut(BaseModel):
     revision: int = 1
     is_active: bool = True
 
+    parent_code: str | None = None
+
 class CatalogOut(BaseModel):
     services: list[ServiceOut]
     team: list[TeamOut]
+    packages: list[dict] = Field(default_factory=list)
+    gallery: list[dict] = Field(default_factory=list)
 
 class ServicePatch(BaseModel):
     model_config = ConfigDict(extra='forbid')

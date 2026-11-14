@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select, func, or_, update
-from .models import Service, TeamMember, Appointment, Consultation, Offer
+from .models import Service, TeamMember, Appointment, Consultation, Offer, Package, GalleryImage, StaffExpertise
 
 class Input(BaseModel):
     model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
@@ -29,6 +29,7 @@ class TeamInput(Input):
     name:str=Field(min_length=1,max_length=120)
     role:str=Field(min_length=1,max_length=120)
     bio:str=Field(min_length=1,max_length=2000)
+    parent_code:str|None=Field(default=None,max_length=36)
     is_active:bool=True
 
 class ContactInput(Input):
@@ -76,7 +77,37 @@ class OfferInput(Input):
         if self.kind=='playlist' and self.price_toman is not None:raise ValueError('پلی‌لیست قیمت ندارد.')
         return self
 
-ENTITIES={'services':(Service,ServiceInput),'team':(TeamMember,TeamInput),'appointments':(Appointment,AppointmentInput),'consultations':(Consultation,ConsultationInput),'offers':(Offer,OfferInput)}
+class PackageInput(Input):
+    name:str=Field(min_length=1,max_length=120)
+    category:Literal['bride','engagement','companion','birthday']
+    tier:str=Field(min_length=1,max_length=20)
+    description:str=Field(min_length=1,max_length=2000)
+    price_toman:int|None=Field(default=None,ge=0,le=2000000000)
+    service_codes:list[str]=Field(max_length=30)
+    is_active:bool=True
+    @field_validator('service_codes')
+    @classmethod
+    def unique_codes(cls,v):
+        if len(set(v))!=len(v):raise ValueError('خدمت تکراری است.')
+        return v
+
+class GalleryInput(Input):
+    title:str=Field(min_length=1,max_length=120)
+    src:str=Field(min_length=1,max_length=500)
+    category:Literal['hair','nails','makeup','skin','bride','other']
+    staff_code:str|None=Field(default=None,max_length=36)
+    is_active:bool=True
+    @field_validator('src')
+    @classmethod
+    def image_url(cls,v):
+        # Local assets or HTTPS only; never script/data URLs or relative traversal.
+        from urllib.parse import urlsplit
+        u=urlsplit(v)
+        if '..' in u.path.split('/') or u.username or u.password or u.query or u.fragment:raise ValueError('نشانی تصویر معتبر نیست.')
+        if not ((v.startswith('/assets/') and not u.netloc) or (u.scheme=='https' and u.hostname)) or not re.search(r'\.(?:png|jpe?g|webp|avif)$',u.path,re.I):raise ValueError('نشانی تصویر معتبر نیست.')
+        return v
+
+ENTITIES={'packages':(Package,PackageInput),'gallery':(GalleryImage,GalleryInput),'services':(Service,ServiceInput),'team':(TeamMember,TeamInput),'appointments':(Appointment,AppointmentInput),'consultations':(Consultation,ConsultationInput),'offers':(Offer,OfferInput)}
 
 def out(record):
     data={c.name:getattr(record,c.name) for c in record.__table__.columns}
@@ -132,6 +163,8 @@ def mount_management(app,session,require_admin):
         if service is None or not service.is_active:raise HTTPException(422,'خدمت فعال انتخاب کنید.')
         staff=data.get('staff_code')
         if staff:
+            from .packages import NAIL_CODES
+            if data['service_code'] in NAIL_CODES and staff!='02':raise HTTPException(422,'این خدمت فقط برای کوثر عبدالخانی است.')
             codes=sorted(set([x for x in [staff,old_staff] if x]))
             members=list(db.scalars(select(TeamMember).where(TeamMember.code.in_(codes)).order_by(TeamMember.code).with_for_update()))
             member=next((m for m in members if m.code==staff),None)
@@ -141,9 +174,23 @@ def mount_management(app,session,require_admin):
                 if exclude:query=query.where(Appointment.id!=exclude)
                 if db.scalar(query.limit(1)):raise HTTPException(409,'این بازه برای همکار انتخاب‌شده پر است.')
 
+    def validate_references(db, model, data, identity=None):
+        if model is Package:
+            codes=data['service_codes']
+            if any(not db.get(Service,c) or c in ['01','06'] for c in codes):raise HTTPException(422,'خدمت معتبر انتخاب کنید.')
+        if model is GalleryImage and data.get('staff_code') and not db.get(TeamMember,data['staff_code']):raise HTTPException(422,'عضو تیم پیدا نشد.')
+        if model is TeamMember and data.get('parent_code'):
+            seen={identity};code=data['parent_code']
+            while code:
+                if code in seen:raise HTTPException(422,'رابطه دستیار چرخشی است.')
+                seen.add(code);member=db.get(TeamMember,code)
+                if not member:raise HTTPException(422,'سرپرست پیدا نشد.')
+                code=member.parent_code
+
     @router.post('/{entity}',status_code=201)
     def create(entity:str,payload:dict,db=Depends(session)):
         model,_=spec(entity);data=validate(entity,payload)
+        validate_references(db,model,data)
         if model is Consultation and data.get('message') is None:data['message']=''
         if model is Appointment:write_lock(db);check_appointment(db,data)
         if hasattr(model,'sort_order'):data['sort_order']=(db.scalar(select(func.max(model.sort_order))) or 0)+1
@@ -156,6 +203,7 @@ def mount_management(app,session,require_admin):
         revision=payload.get('revision')
         if type(revision) is not int or revision<1:raise HTTPException(422,'شماره بازبینی لازم است.')
         data=validate(entity,{k:v for k,v in payload.items() if k!='revision'})
+        validate_references(db,model,data,identity)
         if model is Consultation and data.get('message') is None:data['message']=''
         if model is Appointment:write_lock(db)
         row=db.get(model,identity)
