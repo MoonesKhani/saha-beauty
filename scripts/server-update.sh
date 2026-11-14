@@ -14,7 +14,16 @@ fi
 [[ -d "$project_dir" ]] || { echo 'پوشه پروژه پیدا نشد.' >&2; exit 1; }
 cd "$project_dir"
 [[ -f compose.yaml && -f .env && -d .git ]] || { echo 'compose.yaml، فایل خصوصی .env و مخزن موجود لازم‌اند؛ چیزی ساخته یا جایگزین نشد.' >&2; exit 1; }
-git diff --quiet && git diff --cached --quiet || { echo 'مخزن تغییر ذخیره‌نشده دارد؛ ابتدا تغییرات موجود را بررسی کنید.' >&2; exit 1; }
+# Distinguish an actual tracked change from a Git inspection failure. Ignored
+# runtime files (.env, uploads and backups) and other untracked files are kept.
+if ! repository_status="$(git status --porcelain=v1 --untracked-files=no)"; then
+  echo 'بررسی وضعیت مخزن ناموفق بود؛ به‌روزرسانی انجام نشد.' >&2
+  exit 1
+fi
+if [[ -n "$repository_status" ]]; then
+  echo 'مخزن تغییر ذخیره‌نشده دارد؛ ابتدا تغییرات موجود را بررسی کنید.' >&2
+  exit 1
+fi
 # Do not deploy from an unrelated remote or send credentials to a new destination.
 remote="$(git remote get-url origin)"
 case "$remote" in
