@@ -58,13 +58,14 @@ def mount_gallery_uploads(app, settings, session, require_admin):
                 os.replace(temporary,directory/name)
             finally:
                 temporary.unlink(missing_ok=True)
-        return {'src':'/media/gallery/'+name,'width':normalized.width,'height':normalized.height,'bytes':len(encoded)}
+        return {'src':'/api/v1/gallery-media/'+name,'width':normalized.width,'height':normalized.height,'bytes':len(encoded)}
 
+    @app.get('/api/v1/gallery-media/{filename}')
     @app.get('/media/gallery/{filename}')
     def image(filename:str,db=Depends(session)):
         if not re.fullmatch(r'[0-9a-f]{32}\.webp',filename):raise HTTPException(404,'تصویر پیدا نشد.')
         src='/media/gallery/'+filename
-        if not db.scalar(select(GalleryImage.id).where(GalleryImage.src==src,GalleryImage.is_active.is_(True)).limit(1)):
+        if not db.scalar(select(GalleryImage.id).where(GalleryImage.src.in_([src,'/api/v1/gallery-media/'+filename]),GalleryImage.is_active.is_(True)).limit(1)):
             raise HTTPException(404,'تصویر منتشر نشده است.')
         path=directory/filename
         if not path.is_file():raise HTTPException(404,'تصویر پیدا نشد.')

@@ -104,7 +104,7 @@ class GalleryInput(Input):
         from urllib.parse import urlsplit
         u=urlsplit(v)
         if '..' in u.path.split('/') or u.username or u.password or u.query or u.fragment:raise ValueError('نشانی تصویر معتبر نیست.')
-        if not (((v.startswith('/assets/') or re.fullmatch(r'/media/gallery/[0-9a-f]{32}\.webp',v)) and not u.netloc) or (u.scheme=='https' and u.hostname)) or not re.search(r'\.(?:png|jpe?g|webp|avif)$',u.path,re.I):raise ValueError('نشانی تصویر معتبر نیست.')
+        if not (((v.startswith('/assets/') or re.fullmatch(r'/(?:media/gallery|api/v1/gallery-media)/[0-9a-f]{32}\.webp',v)) and not u.netloc) or (u.scheme=='https' and u.hostname)) or not re.search(r'\.(?:png|jpe?g|webp|avif)$',u.path,re.I):raise ValueError('نشانی تصویر معتبر نیست.')
         return v
 
 ENTITIES={'packages':(Package,PackageInput),'gallery':(GalleryImage,GalleryInput),'services':(Service,ServiceInput),'team':(TeamMember,TeamInput),'appointments':(Appointment,AppointmentInput),'consultations':(Consultation,ConsultationInput),'offers':(Offer,OfferInput)}

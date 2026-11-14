@@ -29,7 +29,7 @@ def upload(client,data=None,headers=None):
 def test_image_upload_publication_and_archival(setup):
     client,settings=setup
     response=upload(client);assert response.status_code==201,response.text
-    src=response.json()['src'];assert src.startswith('/media/gallery/') and src.endswith('.webp')
+    src=response.json()['src'];assert src.startswith('/api/v1/gallery-media/') and src.endswith('.webp')
     assert client.get(src).status_code==404 # Upload alone does not publish the image.
     row=client.post('/api/v1/admin/gallery',headers={'Authorization':'Bearer '+TOKEN},json={'title':'نمونه تأییدشده','src':src,'category':'bride','staff_code':'01','is_active':True})
     assert row.status_code==201,row.text
