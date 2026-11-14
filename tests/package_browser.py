@@ -22,7 +22,7 @@ async def main():
     try:api('/health/ready');break
     except OSError:await asyncio.sleep(.1)
    async with async_playwright() as p:
-    browser=await p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--no-proxy-server'])
+    browser=await p.chromium.launch(executable_path=os.environ.get('SAHA_CHROMIUM','/usr/bin/chromium'),args=['--no-sandbox','--no-proxy-server'])
     # Only CDN reads pass through the inherited managed proxy with TLS verification.
     async def cdn(route):
      def read():

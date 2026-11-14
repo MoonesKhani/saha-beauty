@@ -96,3 +96,7 @@ bash /tmp/saha-update-fixed.sh "$(git rev-parse --show-toplevel)"
 ```sh
 .venv/bin/python -m unittest discover -s tests -p test_server_update.py -v
 ```
+
+## انتشار خودکار پس از تأیید
+
+طرح جدید انتشار، وضعیت فعال‌سازی یک‌باره، روش تأیید از طریق Codex، انتقال image بدون Docker Hub روی آروان و حدود بازگشت بدون حذف داده در [راهنمای انتشار تأییدشده](DEPLOY-AUTOMATION.md) آمده است. این سامانه هنوز روی سایت اصلی فعال نشده و تغییر main به‌تنهایی workflow انتشار سرور را اجرا نمی‌کند.

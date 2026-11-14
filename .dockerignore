@@ -11,3 +11,4 @@ tests
 backups
 *.pem
 *.key
+.deploy
