@@ -10,7 +10,7 @@ async def main():
  with tempfile.TemporaryDirectory() as directory:
   token=secrets.token_hex(32)
   with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
-  base=f'http://127.0.0.1:{port}';env={**os.environ,'DATABASE_URL':f'sqlite:///{directory}/test.db','ADMIN_API_TOKEN':token,'SAHA_BOOKING_ENABLED':'1'}
+  base=f'http://127.0.0.1:{port}';env={**os.environ,'DATABASE_URL':f'sqlite:///{directory}/test.db','ADMIN_API_TOKEN':token,'SAHA_BOOKING_ENABLED':'1','SAHA_GALLERY_UPLOAD_DIR':directory+'/gallery'}
   subprocess.run([PYTHON,'frontend/build.py'],cwd=ROOT,env=env,check=True,stdout=subprocess.DEVNULL)
   subprocess.run([PYTHON,'-m','backend.app.cli','init-db'],cwd=ROOT,env=env,check=True,stdout=subprocess.DEVNULL)
   process=subprocess.Popen([PYTHON,'-m','uvicorn','backend.app.main:app','--host','127.0.0.1','--port',str(port)],cwd=ROOT,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -43,15 +43,14 @@ async def main():
      # Owner enters a tariff through the actual management UI.
      admin=await context.new_page();await admin.goto(base+'/admin');await admin.locator('#admin-token').fill(token);await admin.locator('#login-form button').click();await admin.locator('#admin-app').wait_for(state='visible')
      await admin.locator('[data-section=prices]').click();await admin.get_by_role('button',name='ویرایش ناخن',exact=True).click();await admin.locator('#field-price_toman').fill('700000');await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden')
-     await page.reload();await page.locator('#package-select').wait_for();await page.locator('input[name=service][value="02"]').check()
      await page.wait_for_function("document.querySelector('#package-total').textContent.includes('۱۵٬۷۰۰٬۰۰۰')")
      await page.locator('#package-select').select_option('companion-vip');await page.wait_for_function("document.querySelector('#package-total').textContent.includes('هنوز از پنل')")
      assert await page.locator('input[name=service]:checked').count()==0
      assert await page.locator('#reserve-confirm').is_disabled()
      # Define the companion services through the panel and observe its public page.
      await admin.locator('[data-section=packages]').click();await admin.get_by_role('button',name='ویرایش همراه عروس · VIP',exact=True).click()
-     await admin.locator('[data-package-service="04"]').check();await admin.locator('[data-package-service="hair-updo"]').check();await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden')
-     await page.goto(base+'/bridal.html?package=companion-vip');await page.wait_for_function("document.querySelector('#package-total').textContent.includes('قیمت نهایی: ۳٬۵۰۰٬۰۰۰')")
+     await admin.locator('#field-description').fill('توضیحات ویرایش‌شده '+str(width));await admin.locator('#field-price_toman').fill('3700000');await admin.locator('[data-package-service="04"]').check();await admin.locator('[data-package-service="hair-updo"]').check();await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden')
+     await page.wait_for_function("document.querySelector('#package-total').textContent.includes('قیمت نهایی: ۳٬۷۰۰٬۰۰۰')");assert 'توضیحات ویرایش‌شده '+str(width) in await page.locator('#selected-package-description').inner_text()
      assert await page.locator('input[name=service]:checked').count()==2
      # Reserve the configured package with two real specialists and a captured quote.
      day=(datetime.now(ZoneInfo('Asia/Tehran'))+timedelta(days=1)).date()
@@ -75,8 +74,10 @@ async def main():
      await dialog.get_by_role('link',name='مشاهده نمونه‌کارها').click();await page.wait_for_url('**/gallery.html?staff=01')
      await page.locator('[data-gallery-category=bride]').click();assert await page.locator('[data-gallery-category=bride]').get_attribute('aria-pressed')=='true'
      # Image creation and archival in panel affect the live gallery.
-     await admin.locator('[data-section=gallery]').click();await admin.locator('#add-record').click();await admin.locator('#field-title').fill('عروس آزمون '+str(width));await admin.locator('#field-src').fill('/assets/saha-beauty-portrait.jpg');await admin.locator('#field-staff_code').select_option('01');await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden')
-     await page.reload();await page.locator('#gallery-grid article').first.wait_for();assert 'عروس آزمون '+str(width) in await page.locator('#gallery-grid').inner_text()
+     await admin.locator('[data-section=gallery]').click();await admin.locator('#add-record').click();await admin.locator('#field-title').fill('عروس آزمون '+str(width));from PIL import Image
+     image_path=Path(directory)/('portfolio-'+str(width)+'.png');Image.new('RGB',(120,80),'pink').save(image_path)
+     await admin.locator('#gallery-file').set_input_files(str(image_path));await admin.wait_for_function("document.querySelector('#gallery-upload-status').textContent.includes('تصویر بارگذاری شد')");await admin.locator('#field-staff_code').select_option('01');await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden')
+     await page.locator('#gallery-grid article').first.wait_for();await page.get_by_role('heading',name='عروس آزمون '+str(width),exact=True).wait_for();assert await page.locator('#gallery-grid img').last.evaluate('(image)=>image.decode().then(()=>image.naturalWidth>0)')
      # Expertise and working hours use the existing scheduling editor.
      schedule=await context.new_page();await schedule.goto(base+'/scheduling.html');await schedule.locator('#schedule-token').fill(token);await schedule.locator('#schedule-login button').click();await schedule.locator('#schedule-form').wait_for(state='visible')
      assert await schedule.locator('[data-expertise="02"]').count()==0
@@ -85,9 +86,12 @@ async def main():
      assert api('/api/v1/admin/scheduling/03')['services'][0]['duration_minutes']==30
      await schedule.close()
      # Main buffet modal reads owner records, and 9932 has telephone links only.
-     api('/api/v1/admin/offers',{'kind':'buffet','title':'دمنوش آزمون','description':'منوی تعریف‌شده مدیر','price_toman':None,'is_active':True},'POST')
+     await admin.locator('[data-section=buffet]').click();await admin.locator('#add-record').click();await admin.locator('#field-title').fill('دمنوش آزمون '+str(width));await admin.locator('#field-description').fill('منوی تعریف‌شده مدیر');await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden')
      await page.goto(base+'/',wait_until='networkidle');assert await page.locator('a[href*="wa.me/989165109932"]').count()==0
      assert await page.locator('a[href="tel:09165109932"]').count()>0
+     await admin.locator('[data-section=packages]').click();await admin.get_by_role('button',name='ویرایش عروس · عادی',exact=True).click();await admin.locator('#field-description').fill('توضیحات زنده عروس '+str(width));await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden')
+     await page.get_by_text('توضیحات زنده عروس '+str(width),exact=True).wait_for()
+     await admin.locator('[data-section=team]').click();await admin.get_by_role('button',name='ویرایش سهام شحیتی',exact=True).click();await admin.locator('#field-bio').fill('معرفی زنده متخصص '+str(width));await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden');await page.get_by_text('معرفی زنده متخصص '+str(width),exact=True).wait_for()
      await page.locator('[data-saha-open-menu]').click();await page.get_by_text('منوی تعریف‌شده مدیر',exact=False).first.wait_for()
      await page.keyboard.press('Escape')
      await page.screenshot(path=f'/tmp/saha-packages-home-{width}.png')

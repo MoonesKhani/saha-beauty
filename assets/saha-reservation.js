@@ -78,7 +78,7 @@ $('#reservation-form').before(packageHost);
 const total=node('p',undefined,'package-total');total.id='package-total';total.setAttribute('role','status');total.setAttribute('aria-live','polite');$('#reservation-summary').after(total);
 function updatePrice(){
  const selected=services().map(s=>s.code),p=packages.find(p=>p.code===packageCode);
- if(!p){quote=null;quoteReady=false;const prices=services().map(s=>s.price_toman);total.textContent=prices.length?'جمع خدمات: '+(prices.some(p=>p==null)?'تعرفه برخی خدمات مشخص نشده':money(prices.reduce((a,b)=>a+b,0))):'';return;}
+ if(!p){quote=null;quoteReady=false;if(packageCode){total.textContent='این پکیج دیگر فعال نیست؛ پکیج دیگری انتخاب کن.';$('#reserve-confirm').disabled=true;return;}const prices=services().map(s=>s.price_toman);total.textContent=prices.length?'جمع خدمات: '+(prices.some(p=>p==null)?'تعرفه برخی خدمات مشخص نشده':money(prices.reduce((a,b)=>a+b,0))):'';return;}
  const key=JSON.stringify([p.code,selected.map(code=>[code,catalog.services.find(s=>s.code===code)?.price_toman]),p.revision]);
  if(priceFingerprint===key)return;priceFingerprint=key;quoteReady=false;quote=null;$('#reserve-confirm').disabled=true;
  const included=new Set(p.service_codes),chosenSet=new Set(selected),changed=p.price_toman==null?selected:[...new Set([...included,...chosenSet])].filter(c=>included.has(c)!==chosenSet.has(c));
@@ -91,19 +91,19 @@ function updatePrice(){
  fetch('/api/v1/packages/quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({package_code:p.code,service_codes:selected})}).then(async r=>{const data=await r.json();if(current!==quoteGeneration||key!==priceFingerprint)return;if(!r.ok)throw Error(typeof data.detail==='string'?data.detail:'محاسبه قیمت ممکن نشد.');quote=data;quoteReady=true;total.textContent='قیمت پایه: '+money(data.base_price_toman)+'\nقیمت نهایی: '+money(data.total_toman)+(data.total_toman==null?' · '+data.message:'');$('#reserve-confirm').disabled=saving||!canConfirm();}).catch(e=>{if(current===quoteGeneration&&key===priceFingerprint){quoteReady=false;total.textContent=e.message;$('#reserve-confirm').disabled=true;}});
 }
 function packageUI(){
- packageHost.replaceChildren();if(!packages.length)return;
+ const previousOpen=packageHost.querySelector('details')?.open;packageHost.replaceChildren();if(!packages.length)return;
  const kind=document.body.dataset.packagePage,category=new URLSearchParams(location.search).get('category');
  const list=packages.filter(p=>kind==='birthday'?p.category==='birthday':kind==='bridal'?p.category!=='birthday':true);
  packageHost.append(node('h2',kind==='birthday'?'خدمات پکیج تولد را انتخاب کن':'مقایسه و انتخاب پکیج'));
  const label=node('label','پکیج'),select=node('select');select.id='package-select';select.setAttribute('aria-label','انتخاب پکیج');const empty=node('option','خدمات دلخواه بدون پکیج');empty.value='';select.append(empty);
  for(const p of list){const option=node('option',p.name+' · '+money(p.price_toman));option.value=p.code;select.append(option);}
- label.append(select);packageHost.append(label);select.value=packageCode||'';
- const details=node('details',undefined,'package-comparison');details.open=!!kind;details.append(node('summary','مقایسه خدمات و قیمت پکیج‌ها'));const table=node('table'),head=node('tr');head.append(node('th','خدمات / پکیج'));
+ label.append(select);packageHost.append(label);select.value=packageCode||'';const description=node('p',packages.find(p=>p.code===packageCode)?.description||'');description.id='selected-package-description';packageHost.append(description);
+ const details=node('details',undefined,'package-comparison');details.open=previousOpen??!!kind;details.append(node('summary','مقایسه خدمات و قیمت پکیج‌ها'));const table=node('table'),head=node('tr');head.append(node('th','خدمات / پکیج'));
  const compareList=category?list.filter(p=>p.category===category):list;
  compareList.forEach(p=>head.append(node('th',p.name)));const thead=node('thead');thead.append(head);table.append(thead);const tbody=node('tbody'),priceRow=node('tr');priceRow.append(node('th','قیمت پایه'));compareList.forEach(p=>priceRow.append(node('td',money(p.price_toman))));tbody.append(priceRow);
  const codes=[...new Set(compareList.flatMap(p=>p.service_codes))];codes.forEach(code=>{const row=node('tr');row.append(node('th',catalog.services.find(s=>s.code===code)?.name||code));compareList.forEach(p=>row.append(node('td',p.service_codes.includes(code)?'✓':'—')));tbody.append(row);});
- const note=node('tr');note.append(node('th','توضیحات'));compareList.forEach(p=>note.append(node('td',p.service_codes.length?p.description:'خدمات بعداً از پنل تعریف می‌شوند.')));tbody.append(note);table.append(tbody);details.append(table);packageHost.append(details);
- select.addEventListener('change',()=>{packageCode=select.value||null;chosen.clear();staff.clear();times.clear();const p=packages.find(p=>p.code===packageCode);p?.service_codes.forEach(c=>chosen.add(c));priceFingerprint='';quoteGeneration++;selection();availability();});
+ const note=node('tr');note.append(node('th','توضیحات'));compareList.forEach(p=>note.append(node('td',p.description+(p.service_codes.length?'':' · خدمات بعداً از پنل تعریف می‌شوند.'))));tbody.append(note);table.append(tbody);details.append(table);packageHost.append(details);
+ select.addEventListener('change',()=>{packageCode=select.value||null;chosen.clear();staff.clear();times.clear();const p=packages.find(p=>p.code===packageCode);description.textContent=p?.description||'';p?.service_codes.forEach(c=>chosen.add(c));priceFingerprint='';quoteGeneration++;selection();availability();});
 }
 selection();availability();
 Promise.all([fetch('/api/v1/packages',{cache:'no-store'}).then(async r=>{if(!r.ok)throw Error();packageReady=true;return (await r.json()).items;}).catch(()=>fetch('/assets/saha-packages.json').then(r=>r.json())),fetch('/api/v1/booking/catalog',{cache:'no-store'}).then(async r=>{if(!r.ok)throw Error();return r.json();}).catch(()=>null)]).then(([data,booking])=>{
@@ -113,4 +113,15 @@ Promise.all([fetch('/api/v1/packages',{cache:'no-store'}).then(async r=>{if(!r.o
  packageUI();selection();availability();
 });
 fetch('/api/v1/booking/catalog',{cache:'no-store'}).then(async r=>{if(!r.ok)throw new Error();const data=await r.json();if(!Array.isArray(data.services)||!Array.isArray(data.team))throw new Error();catalog=data;priceFingerprint='';live=data.enabled===true;batchLive=data.batch_enabled===true;for(const code of [...chosen])if(!catalog.services.some(s=>s.code===code))chosen.delete(code);$('#reservation-status').textContent=live?'برای هر خدمت، متخصص و ساعت دلخواهت را انتخاب کن.':'بک‌اند متصل است؛ پذیرش آنلاین هنوز از طرف سالن فعال نشده.';selection();availability();}).catch(()=>{$('#reservation-status').textContent='رزرو آنلاین به سرور سالن متصل نیست؛ برای نوبت قطعی با سالن هماهنگ کن.';});
+let publicSignature='',refreshingContent=false;
+async function refreshContent(){if(refreshingContent)return;refreshingContent=true;try{
+ const [p,b]=await Promise.all([fetch('/api/v1/packages',{cache:'no-store'}),fetch('/api/v1/booking/catalog',{cache:'no-store'})]);if(!p.ok||!b.ok)return;
+ const nextPackages=(await p.json()).items,nextCatalog=await b.json();if(!Array.isArray(nextPackages)||!Array.isArray(nextCatalog.services)||!Array.isArray(nextCatalog.team))return;
+ const signature=JSON.stringify([nextPackages,nextCatalog]);if(signature===publicSignature)return;publicSignature=signature;const previousPackage=packages.find(p=>p.code===packageCode);packages=nextPackages;catalog=nextCatalog;const updatedPackage=packages.find(p=>p.code===packageCode);if(previousPackage&&!previousPackage.service_codes.length&&updatedPackage?.service_codes.length&&!chosen.size)updatedPackage.service_codes.forEach(c=>chosen.add(c));packageReady=true;live=catalog.enabled===true;batchLive=catalog.batch_enabled===true;
+ for(const code of [...chosen])if(!catalog.services.some(s=>s.code===code)){chosen.delete(code);staff.delete(code);times.delete(code);}
+ priceFingerprint='';quoteGeneration++;packageUI();selection();
+}catch(_){}finally{refreshingContent=false;}}
+setInterval(()=>{if(!document.hidden)refreshContent();},15000);
+window.addEventListener('storage',event=>{if(event.key==='saha-content-revision')refreshContent();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshContent();});
 })();

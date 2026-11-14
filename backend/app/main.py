@@ -53,6 +53,7 @@ def create_app(settings=None):
     async def database_error(_, __):
         return JSONResponse(status_code=503, content={'detail': 'پایگاه داده آماده نیست.'})
 
+    @app.get('/api/v1/health/ready')
     @app.get('/health/ready')
     def ready():
         try:
@@ -103,6 +104,9 @@ def create_app(settings=None):
 
     from .audio_uploads import mount_audio_uploads
     mount_audio_uploads(app, settings, require_admin)
+
+    from .gallery_uploads import mount_gallery_uploads
+    mount_gallery_uploads(app, settings, session, require_admin)
 
     from .packages import mount_packages
     mount_packages(app, session)
