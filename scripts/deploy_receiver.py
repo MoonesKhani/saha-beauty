@@ -66,7 +66,7 @@ def main():
         else:arguments+=['--rollback-image',identity]
         # The transaction keeps running under systemd even if the SSH connection drops.
         unit='saha-release-'+os.path.basename(temporary)
-        result=subprocess.run(['systemd-run','--quiet','--wait','--collect','--unit',unit,'--property=Type=exec',*arguments])
+        result=subprocess.run(['systemd-run','--quiet','--wait','--collect','--unit',unit,'--property=Type=exec','--property=RuntimeMaxSec=1200','--property=TimeoutStopSec=90',*arguments])
         if result.returncode:raise ValueError('Release failed; inspect journalctl -u '+unit+' and request deployment status')
         subprocess.run(['bash',str(updater),'--status','--project',str(project)],check=True)
 if __name__=='__main__':

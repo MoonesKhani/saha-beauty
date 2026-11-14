@@ -7,7 +7,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
-from scripts.deploy_release import DeploymentError,apply_release,atomic_json,deployment_lock,unpack_bundle
+from scripts.deploy_release import DeploymentError,apply_release,atomic_json,deployment_lock,unpack_bundle,verify_environment
 from scripts.deploy_receiver import parse_command,receive
 from scripts.validate_release_run import validate
 
@@ -128,5 +128,16 @@ class ApprovalTest(unittest.TestCase):
         self.assertEqual(parse_command('site '+OLD['image_id']),('site',OLD['image_id']))
         for command in ['bash','deploy '+SHA+'; id','deploy '+SHA+'\n','rollback /tmp/file','scp -t /root/.ssh/authorized_keys']:
             with self.assertRaises(ValueError):parse_command(command)
+
+
+class ConfigurationTest(unittest.TestCase):
+    def test_existing_compose_settings_are_preserved(self):
+        verify_environment({'ADMIN_API_TOKEN':'fixture'},['PATH=/bin','ADMIN_API_TOKEN=fixture'],['PATH=/bin'])
+    def test_pending_env_change_stops_instead_of_overwriting(self):
+        with self.assertRaises(DeploymentError) as error:
+            verify_environment({'ADMIN_API_TOKEN':'new-private-fixture'},['ADMIN_API_TOKEN=old-private-fixture'],[])
+        self.assertNotIn('private-fixture',str(error.exception))
+    def test_unrecorded_runtime_setting_is_not_silently_lost(self):
+        with self.assertRaises(DeploymentError):verify_environment({},['CUSTOM_SETTING=preserve'],[])
 
 if __name__=='__main__':unittest.main()

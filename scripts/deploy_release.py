@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import tarfile
 import tempfile
@@ -99,6 +100,17 @@ def apply_release(engine,state_path,candidate,rollback=False):
     atomic_json(state_path,result)
     return result
 
+def verify_environment(configured,actual,image_defaults):
+    actual=dict(item.split('=',1) for item in actual)
+    defaults=dict(item.split('=',1) for item in image_defaults)
+    for key,value in configured.items():
+        expected=None if value is None else str(value)
+        if actual.get(key)!=expected:raise DeploymentError('Current container settings differ from Compose/.env; review configuration before deployment')
+    # Docker client proxy injection is reused by the same client, not copied to logs/state.
+    client_proxy={'HTTP_PROXY','HTTPS_PROXY','NO_PROXY','ALL_PROXY','http_proxy','https_proxy','no_proxy','all_proxy'}
+    extras={key for key,value in actual.items() if defaults.get(key)!=value and key not in configured and key not in client_proxy}
+    if extras:raise DeploymentError('Container has settings outside the retained Compose files; declare them before deployment')
+
 SCHEMA_CODE = '''
 import json
 from alembic.config import Config
@@ -139,6 +151,10 @@ class ComposeEngine:
         self.mounts=self.mount_signature(info)
         if not any(m[2]=='/app/var' and m[0]=='volume' for m in self.mounts):raise DeploymentError('Existing persistent uploads volume is required')
         self.initial=info
+        effective=json.loads(self.run(self.compose()+['config','--format','json'],'verify retained Compose settings'))
+        for service,container in [('app',info),('db',self.inspect(db))]:
+            image=json.loads(self.run(['docker','image','inspect',container['Image']],'inspect original image defaults'))[0]
+            verify_environment(effective['services'][service].get('environment') or {},container['Config'].get('Env') or [],image.get('Config',{}).get('Env') or [])
 
     def run(self,args,label,stdin=None,stdout=None):
         result=subprocess.run(args,cwd=self.project,stdin=stdin,stdout=stdout or subprocess.PIPE,stderr=subprocess.PIPE)
@@ -249,5 +265,7 @@ def main():
             result=apply_release(engine,state_path,candidate)
         print(json.dumps(result,sort_keys=True))
 if __name__=='__main__':
+    def interrupted(signum,frame):raise DeploymentError('Deployment interrupted; attempting image recovery if a switch began')
+    for signum in [signal.SIGTERM,signal.SIGINT,signal.SIGHUP]:signal.signal(signum,interrupted)
     try:main()
     except DeploymentError as error:raise SystemExit(str(error)) from None

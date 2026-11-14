@@ -8,6 +8,7 @@ source_dir="$(cd "$(dirname "$0")" && pwd -P)"
 [[ -f "$project_dir/compose.yaml" && -f "$project_dir/.env" ]] || { echo 'استقرار موجود پیدا نشد؛ چیزی نصب نشد.' >&2; exit 1; }
 for command in docker python3 systemd-run ssh-keygen; do command -v "$command" >/dev/null; done
 docker compose version >/dev/null
+systemd-run --quiet --wait --collect --unit="saha-deploy-access-check-$$" --property=Type=exec --property=RuntimeMaxSec=30 /usr/bin/true
 python3 - "$project_dir" <<'PY_CHECK'
 import json,sys
 from pathlib import Path
