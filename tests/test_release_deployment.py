@@ -140,4 +140,20 @@ class ConfigurationTest(unittest.TestCase):
     def test_unrecorded_runtime_setting_is_not_silently_lost(self):
         with self.assertRaises(DeploymentError):verify_environment({},['CUSTOM_SETTING=preserve'],[])
 
+
+class PublicIdentityTest(unittest.TestCase):
+    def test_matching_public_version_is_required(self):
+        from unittest.mock import patch
+        from scripts.verify_public_release import verify
+        with patch('urllib.request.urlopen',return_value=BytesIO(json.dumps({'image_id':NEW['image_id']}).encode())):
+            verify(NEW['image_id'],'https://example.invalid',attempts=1,delay=0)
+    def test_old_cdn_version_cannot_report_success(self):
+        from unittest.mock import patch
+        from scripts.verify_public_release import verify
+        with patch('urllib.request.urlopen',return_value=BytesIO(json.dumps({'image_id':OLD['image_id']}).encode())):
+            with self.assertRaises(RuntimeError):verify(NEW['image_id'],'https://example.invalid',attempts=1,delay=0)
+    def test_public_verification_keeps_tls_required(self):
+        from scripts.verify_public_release import verify
+        with self.assertRaises(ValueError):verify(NEW['image_id'],'http://example.invalid',attempts=1,delay=0)
+
 if __name__=='__main__':unittest.main()

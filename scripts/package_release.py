@@ -24,7 +24,7 @@ def package(commit, output):
     if len(heads)!=1:raise ValueError('Exactly one database revision is required')
     image=output/'image.tar.gz'
     with image.open('wb') as target:
-        with gzip.GzipFile(filename='',fileobj=target,mode='wb',mtime=0) as zipped:
+        with gzip.GzipFile(filename='',fileobj=target,mode='wb',compresslevel=1,mtime=0) as zipped:
             process=subprocess.Popen(['docker','image','save',tag],stdout=subprocess.PIPE)
             try:
                 while chunk:=process.stdout.read(1024*1024):zipped.write(chunk)

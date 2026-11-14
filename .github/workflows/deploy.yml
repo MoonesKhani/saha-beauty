@@ -102,6 +102,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
+      contents: read
       actions: read
       pages: write
       id-token: write
@@ -109,8 +110,16 @@ jobs:
       name: github-pages
       url: ${{ steps.pages.outputs.page_url }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
       - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
         id: pages
+      - name: Verify the version visible on the public domain
+        env:
+          EXPECTED_IMAGE: ${{ needs.production.outputs.image }}
+        run: python3 scripts/verify_public_release.py --image "$EXPECTED_IMAGE"
   recover:
     needs: [production, publish-site]
     if: >-
@@ -131,6 +140,7 @@ jobs:
           ref: main
           persist-credentials: false
       - name: Restore the previous image and its matching public site
+        id: recovery
         env:
           ARVAN_SSH_KEY: ${{ secrets.ARVAN_SSH_KEY }}
           ARVAN_KNOWN_HOSTS: ${{ secrets.ARVAN_KNOWN_HOSTS }}
@@ -147,4 +157,8 @@ jobs:
       - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
         with:
           artifact_name: github-pages-rollback
+      - name: Verify the restored public version
+        env:
+          EXPECTED_IMAGE: ${{ steps.recovery.outputs.image }}
+        run: python3 scripts/verify_public_release.py --image "$EXPECTED_IMAGE"
       - run: echo 'Release failed; previous application and static site restored without restoring live data.' >> "$GITHUB_STEP_SUMMARY"

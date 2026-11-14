@@ -202,6 +202,8 @@ class ComposeEngine:
         with (directory/'uploads.tar.gz').open('xb') as output:self.run(self.compose()+['exec','-T','app','tar','-C','/app/var','-czf','-','.'],'backup uploads',stdout=output)
         for filename in ['database.dump','uploads.tar.gz']:
             if not (directory/filename).stat().st_size:raise DeploymentError('Empty backup; deployment stopped')
+        with (directory/'database.dump').open('rb') as source:self.run(self.compose()+['exec','-T','db','pg_restore','--list'],'verify database backup archive',stdin=source)
+        self.run(['tar','-tzf',str(directory/'uploads.tar.gz')],'verify uploads backup archive')
         shutil.copyfile(self.project/'.env',directory/'environment.private')
         for index,file in enumerate(self.files):shutil.copyfile(file,directory/f'compose-{index}.private')
         atomic_json(directory/'checksums.json',{p.name:sha256(p) for p in directory.iterdir() if p.is_file()})
