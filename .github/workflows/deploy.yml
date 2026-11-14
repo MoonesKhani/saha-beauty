@@ -1,0 +1,164 @@
+name: Deploy explicitly approved release
+# NEVER add push, workflow_run or pull_request triggers here.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: 'deploy, rollback or read-only status'
+        type: choice
+        options: [deploy, rollback, status]
+        required: true
+      revision:
+        description: 'Deploy: full approved commit SHA. Rollback: approved previous sha256:image ID.'
+        type: string
+      build_run_id:
+        description: 'Successful main CI run ID (deploy only)'
+        type: string
+      confirmation:
+        description: 'Exact DEPLOY <commit> or ROLLBACK <image ID>, after user approval in Codex. Empty for status.'
+        type: string
+permissions:
+  contents: read
+  actions: read
+  pages: read
+concurrency:
+  group: saha-production
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate the exact approved operation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
+          REVISION: ${{ inputs.revision }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          if [[ "$OPERATION" != status ]]; then
+            test "$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type)" = workflow || { echo 'Switch GitHub Pages source to GitHub Actions before enabling approved releases'; exit 1; }
+          fi
+          python3 - <<'PY'
+          import os,re,subprocess
+          mode=os.environ['OPERATION'];revision=os.environ['REVISION'];confirmation=os.environ['CONFIRMATION']
+          if mode=='deploy':
+              subprocess.run(['python3','scripts/validate_release_run.py','--repository',os.environ['GITHUB_REPOSITORY'],'--run-id',os.environ['BUILD_RUN_ID'],'--commit',revision,'--confirmation',confirmation],check=True)
+          elif mode=='rollback':
+              if not re.fullmatch(r'sha256:[0-9a-f]{64}',revision) or confirmation!='ROLLBACK '+revision:raise SystemExit('Exact rollback approval required')
+          elif mode!='status':raise SystemExit('Invalid operation')
+          PY
+  production:
+    needs: validate
+    runs-on: ubuntu-24.04
+    environment: saha-production
+    timeout-minutes: 25
+    outputs:
+      image: ${{ steps.transaction.outputs.image }}
+      previous_image: ${{ steps.transaction.outputs.previous_image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.operation == 'deploy'
+        with:
+          name: saha-release-${{ inputs.revision }}
+          path: ${{ runner.temp }}/release
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.build_run_id }}
+      - name: Check downloaded artifact
+        if: inputs.operation == 'deploy'
+        working-directory: ${{ runner.temp }}/release
+        run: sha256sum --check release.tar.sha256
+      - name: Execute the approved transaction over verified SSH
+        id: transaction
+        env:
+          ARVAN_SSH_KEY: ${{ secrets.ARVAN_SSH_KEY }}
+          ARVAN_KNOWN_HOSTS: ${{ secrets.ARVAN_KNOWN_HOSTS }}
+          ARVAN_HOST: ${{ vars.ARVAN_HOST || '37.32.39.8' }}
+          ARVAN_USER: ${{ vars.ARVAN_USER || 'root' }}
+          ARVAN_PORT: ${{ vars.ARVAN_PORT || '22' }}
+          OPERATION: ${{ inputs.operation }}
+          REVISION: ${{ inputs.revision }}
+        shell: bash
+        run: bash scripts/approved_transport.sh
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        if: inputs.operation != 'status'
+        with:
+          path: ${{ runner.temp }}/pages
+  publish-site:
+    needs: production
+    if: inputs.operation != 'status'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        id: pages
+      - name: Verify the version visible on the public domain
+        env:
+          EXPECTED_IMAGE: ${{ needs.production.outputs.image }}
+        run: python3 scripts/verify_public_release.py --image "$EXPECTED_IMAGE"
+  recover:
+    needs: [production, publish-site]
+    if: >-
+      always() && inputs.operation != 'status' &&
+      needs.production.outputs.previous_image != '' &&
+      (needs.production.result == 'failure' || needs.publish-site.result == 'failure')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      pages: write
+      id-token: write
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Restore the previous image and its matching public site
+        id: recovery
+        env:
+          ARVAN_SSH_KEY: ${{ secrets.ARVAN_SSH_KEY }}
+          ARVAN_KNOWN_HOSTS: ${{ secrets.ARVAN_KNOWN_HOSTS }}
+          ARVAN_HOST: ${{ vars.ARVAN_HOST || '37.32.39.8' }}
+          ARVAN_USER: ${{ vars.ARVAN_USER || 'root' }}
+          ARVAN_PORT: ${{ vars.ARVAN_PORT || '22' }}
+          OPERATION: rollback
+          REVISION: ${{ needs.production.outputs.previous_image }}
+        run: bash scripts/approved_transport.sh
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          name: github-pages-rollback
+          path: ${{ runner.temp }}/pages
+      - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        with:
+          artifact_name: github-pages-rollback
+      - name: Verify the restored public version
+        env:
+          EXPECTED_IMAGE: ${{ steps.recovery.outputs.image }}
+        run: python3 scripts/verify_public_release.py --image "$EXPECTED_IMAGE"
+      - run: echo 'Release failed; previous application and static site restored without restoring live data.' >> "$GITHUB_STEP_SUMMARY"

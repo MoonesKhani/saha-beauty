@@ -2,6 +2,14 @@
 # Update the existing Saha Compose deployment; never create/reset data or print .env.
 set -euo pipefail
 umask 077
+# Artifact deployments reuse this updater, but never build or pull on production.
+if [[ "${1:-}" == --release || "${1:-}" == --rollback || "${1:-}" == --status ]]; then
+  mode="$1"; shift
+  if [[ "$mode" == --status ]]; then
+    exec python3 "$(dirname "$0")/deploy_release.py" --status "$@"
+  fi
+  exec python3 "$(dirname "$0")/deploy_release.py" "$@"
+fi
 command -v docker >/dev/null || { echo 'Docker در این سرور موجود نیست.' >&2; exit 1; }
 docker compose version >/dev/null
 if [[ $# -gt 0 ]]; then
@@ -30,6 +38,9 @@ case "$remote" in
   https://github.com/MoonesKhani/saha-beauty|https://github.com/MoonesKhani/saha-beauty.git|git@github.com:MoonesKhani/saha-beauty.git) ;;
   *) echo 'origin با مخزن تأییدشده سها مطابقت ندارد؛ متوقف شد.' >&2; exit 1;;
 esac
+mkdir -p .deploy
+exec 9>.deploy/deploy.lock
+flock -n 9 || { echo 'یک انتشار دیگر در حال اجراست.' >&2; exit 1; }
 running="$(docker compose ps --status running --services)"
 [[ $'\n'"$running"$'\n' == *$'\ndb\n'* && $'\n'"$running"$'\n' == *$'\napp\n'* ]] || { echo 'سرویس‌های موجود db و app باید فعال باشند؛ این اسکریپت نصب اولیه نیست.' >&2; exit 1; }
 backup_dir="backups/update-$(date -u +%Y%m%d-%H%M%S)"

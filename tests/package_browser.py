@@ -3,7 +3,7 @@ import asyncio,json,os,secrets,socket,subprocess,tempfile,urllib.request
 from pathlib import Path
 from datetime import datetime,timedelta
 from zoneinfo import ZoneInfo
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright,expect
 ROOT=Path(__file__).resolve().parents[1]
 PYTHON=str(ROOT/'.venv/bin/python')
 async def main():
@@ -22,7 +22,7 @@ async def main():
     try:api('/health/ready');break
     except OSError:await asyncio.sleep(.1)
    async with async_playwright() as p:
-    browser=await p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox','--no-proxy-server'])
+    browser=await p.chromium.launch(executable_path=os.environ.get('SAHA_CHROMIUM','/usr/bin/chromium'),args=['--no-sandbox','--no-proxy-server'])
     # Only CDN reads pass through the inherited managed proxy with TLS verification.
     async def cdn(route):
      def read():
@@ -77,7 +77,7 @@ async def main():
      await admin.locator('[data-section=gallery]').click();await admin.locator('#add-record').click();await admin.locator('#field-title').fill('عروس آزمون '+str(width));from PIL import Image
      image_path=Path(directory)/('portfolio-'+str(width)+'.png');Image.new('RGB',(120,80),'pink').save(image_path)
      await admin.locator('#gallery-file').set_input_files(str(image_path));await admin.wait_for_function("document.querySelector('#gallery-upload-status').textContent.includes('تصویر بارگذاری شد')");await admin.locator('#field-staff_code').select_option('01');await admin.locator('#save-record').click();await admin.locator('#record-dialog').wait_for(state='hidden')
-     await page.locator('#gallery-grid article').first.wait_for();await page.get_by_role('heading',name='عروس آزمون '+str(width),exact=True).wait_for();assert await page.locator('#gallery-grid img').last.evaluate('(image)=>image.decode().then(()=>image.naturalWidth>0)')
+     await page.bring_to_front();await page.get_by_role('heading',name='عروس آزمون '+str(width),exact=True).wait_for();portfolio=page.get_by_role('img',name='عروس آزمون '+str(width),exact=True);await portfolio.scroll_into_view_if_needed();await expect(portfolio).to_have_js_property('naturalWidth',120,timeout=15000)
      # Expertise and working hours use the existing scheduling editor.
      schedule=await context.new_page();await schedule.goto(base+'/scheduling.html');await schedule.locator('#schedule-token').fill(token);await schedule.locator('#schedule-login button').click();await schedule.locator('#schedule-form').wait_for(state='visible')
      assert await schedule.locator('[data-expertise="02"]').count()==0

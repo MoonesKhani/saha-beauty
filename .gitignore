@@ -10,3 +10,5 @@ frontend/dist/
 backups/
 *.pem
 *.key
+
+.deploy/
