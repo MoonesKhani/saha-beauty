@@ -2,14 +2,16 @@
 # GitHub-hosted runner transport only. No production action without dispatch validation.
 set -euo pipefail
 umask 077
-[[ -n "${ARVAN_SSH_KEY:-}" && -n "${ARVAN_KNOWN_HOSTS:-}" ]] || { echo 'Configure ARVAN_SSH_KEY and ARVAN_KNOWN_HOSTS first'; exit 1; }
+missing=()
+[[ -n "${ARVAN_SSH_KEY:-}" ]] || missing+=(ARVAN_SSH_KEY)
+[[ -n "${ARVAN_KNOWN_HOSTS:-}" ]] || missing+=(ARVAN_KNOWN_HOSTS)
+if (( ${#missing[@]} )); then printf 'Unavailable secret in this queued run: %s\n' "${missing[@]}"; echo 'Start a NEW status workflow after saving repository secrets'; exit 1; fi
 [[ "$ARVAN_HOST" =~ ^[a-zA-Z0-9.:-]+$ && "$ARVAN_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$ARVAN_PORT" =~ ^[0-9]+$ ]] || exit 1
 key="$RUNNER_TEMP/saha-deploy-key"
 known="$RUNNER_TEMP/saha-known-hosts"
 trap 'rm -f "$key" "$known"' EXIT
-printf '%s\n' "$ARVAN_SSH_KEY" > "$key"
+python3 "$(dirname "$0")/prepare_ssh_key.py" --output "$key"
 printf '%s\n' "$ARVAN_KNOWN_HOSTS" > "$known"
-ssh-keygen -y -f "$key" > /dev/null
 transport=(ssh -F /dev/null -i "$key" -p "$ARVAN_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$known" -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 "$ARVAN_USER@$ARVAN_HOST")
 report="$RUNNER_TEMP/deployment-report.json"
 case "$OPERATION" in
