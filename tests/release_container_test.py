@@ -69,6 +69,12 @@ def main():
             assert not (project/'backups').exists()
             run(updater+bundle_arguments(b),env=environment)
             state=json.loads((project/'.deploy/state.json').read_text());assert state['current']['commit']==b
+            release_app_id=subprocess.check_output(compose+['ps','-q','app'])
+            backup_paths=sorted((project/'backups').glob('*/database.dump'))
+            run(updater+bundle_arguments(b),env=environment)
+            assert subprocess.check_output(compose+['ps','-q','app'])==release_app_id
+            assert sorted((project/'backups').glob('*/database.dump'))==backup_paths
+            assert json.loads((project/'.deploy/state.json').read_text())==state
             # Write real durable data AFTER a release, then roll back without restoring its backup.
             day=(datetime.now(ZoneInfo('Asia/Tehran'))+timedelta(days=1)).date()
             api('/api/v1/admin/scheduling/01',{'services':[{'service_code':'hair-braid','duration_minutes':30}],'windows':[{'weekday':day.weekday(),'start_minute':540,'end_minute':720,'step_minutes':30}]},'PUT')
