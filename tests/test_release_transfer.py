@@ -216,6 +216,36 @@ class SenderTests(unittest.TestCase):
         self.assertEqual(self.remote.store.bundle.read_bytes(),self.data)
         self.assertEqual(self.remote.started,1)
         self.assertEqual(json.loads(self.sender.report.read_text())['current']['commit'],SHA)
+    def test_small_chunks_reuse_ack_and_have_short_deadlines(self):
+        self.data=b'x'*(600*1024);self.bundle.write_bytes(self.data)
+        sender=Sender(['ssh'],self.bundle,SHA,self.root/'report',expected_image=NEW['image_id'],sleep=lambda _:None)
+        remote=FakeRemote(self.root,self.data);sent=[]
+        def request(command,data=None,timeout=60):
+            if command.startswith('upload-chunk'):
+                sent.append((len(data),timeout))
+            return remote.request(command,data,timeout)
+        sender.request=request;sender.upload()
+        self.assertEqual(sent,[(256*1024,90),(256*1024,90),(88*1024,90)])
+        self.assertEqual(remote.calls.count('transfer-info'),1)
+        self.assertEqual(remote.store.bundle.read_bytes(),self.data)
+
+    def test_file_backed_stdin_delivers_eof_without_parent_input_pipe(self):
+        sender=Sender([sys.executable,'-c',
+            'import sys,json,hashlib; data=sys.stdin.buffer.read(); print(json.dumps({"bytes":len(data),"digest":hashlib.sha256(data).hexdigest()}))'],
+            self.bundle,SHA,self.root/'report',expected_image=NEW['image_id'])
+        # Above the observed 2 MiB boundary: this checks local EOF/pipe behavior,
+        # without claiming to reproduce the production network stall.
+        data=b'x'*(3*1024**2)
+        result=sender.request('fixture',data,timeout=5)
+        self.assertEqual(result,{'bytes':len(data),'digest':digest(data)})
+        empty=sender.request('fixture',timeout=5)
+        self.assertEqual(empty['bytes'],0)
+
+    def test_invalid_ack_stops_before_installation(self):
+        self.sender.request=lambda *args,**kwargs: {'bytes':0,'complete':False,'protocol':2}
+        with self.assertRaisesRegex(TransferError,'acknowledgement'):self.sender.deploy()
+        self.assertFalse(self.sender.report.exists())
+
     def test_same_commit_with_other_image_cannot_report_success(self):
         info={'deployment':{'phase':'healthy','current':{**NEW,'image_id':'sha256:'+'9'*64}}}
         self.assertIsNone(self.sender.healthy_report(info))
