@@ -29,6 +29,7 @@ class PrivateKeyFormattingTest(unittest.TestCase):
         lines=self.value.splitlines();flat=lines[0]+' '+''.join(lines[1:-1])+' '+lines[-1]
         self.check(flat)
     def test_base64_encoded_file(self):self.assertIn('base64 envelope',self.check(base64.b64encode(self.value.encode()).decode()))
+    def test_bare_openssh_base64_payload(self):self.assertIn('bare OpenSSH payload',self.check(''.join(self.value.splitlines()[1:-1])))
     def test_missing_final_newline(self):self.check(self.value.rstrip())
     def test_clipboard_prompt_does_not_replace_key_payload(self):
         self.assertIn('surrounding clipboard text',self.check('fixture prompt\n'+self.value+'fixture prompt'))

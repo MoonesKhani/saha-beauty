@@ -27,9 +27,14 @@ def normalize(value):
     text=text.strip()
     if not text.startswith('-----BEGIN '):
         if re.match(r'(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-\S+)\s',text):raise KeyFormatError('ARVAN_SSH_KEY contains a PUBLIC key; SSH needs the dedicated PRIVATE key, not the .pub file')
-        try:decoded=base64.b64decode(''.join(text.split()),validate=True).decode('ascii')
-        except (ValueError,UnicodeDecodeError):decoded=''
-        if decoded.startswith('-----BEGIN '):text=decoded.strip();changes.append('base64 envelope')
+        try:raw=base64.b64decode(''.join(text.split()),validate=True)
+        except ValueError:raw=b''
+        if raw.startswith(b'openssh-key-v1\0'):
+            text='-----BEGIN OPENSSH PRIVATE KEY-----\n'+base64.b64encode(raw).decode('ascii')+'\n-----END OPENSSH PRIVATE KEY-----';changes.append('bare OpenSSH payload')
+        else:
+            try:decoded=raw.decode('ascii')
+            except UnicodeDecodeError:decoded=''
+            if decoded.startswith('-----BEGIN '):text=decoded.strip();changes.append('base64 envelope')
     kinds=r'(OPENSSH\s+PRIVATE\s+KEY|RSA\s+PRIVATE\s+KEY|EC\s+PRIVATE\s+KEY|PRIVATE\s+KEY|ENCRYPTED\s+PRIVATE\s+KEY)'
     begins=list(re.finditer(r'-----BEGIN\s+'+kinds+r'-----',text))
     ends=list(re.finditer(r'-----END\s+'+kinds+r'-----',text))
