@@ -46,7 +46,7 @@ jobs:
         run: |
           .venv/bin/python -m pytest -q
           .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
-          bash -n scripts/server-update.sh scripts/install-deploy-access.sh
+          bash -n scripts/server-update.sh scripts/install-deploy-access.sh scripts/update-deploy-runtime.sh scripts/approved_transport.sh
           .venv/bin/python frontend/build.py
       - name: Test booking transactions on PostgreSQL
         env:

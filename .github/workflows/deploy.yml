@@ -59,7 +59,7 @@ jobs:
     needs: validate
     runs-on: ubuntu-24.04
     environment: saha-production
-    timeout-minutes: 25
+    timeout-minutes: 90
     outputs:
       image: ${{ steps.transaction.outputs.image }}
       previous_image: ${{ steps.transaction.outputs.previous_image }}
