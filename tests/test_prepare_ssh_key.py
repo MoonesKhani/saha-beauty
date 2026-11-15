@@ -30,6 +30,13 @@ class PrivateKeyFormattingTest(unittest.TestCase):
         self.check(flat)
     def test_base64_encoded_file(self):self.assertIn('base64 envelope',self.check(base64.b64encode(self.value.encode()).decode()))
     def test_missing_final_newline(self):self.check(self.value.rstrip())
+    def test_clipboard_prompt_does_not_replace_key_payload(self):
+        self.assertIn('surrounding clipboard text',self.check('fixture prompt\n'+self.value+'fixture prompt'))
+    def test_wrapped_markers(self):
+        self.assertIn('wrapped key markers',self.check(self.value.replace('OPENSSH PRIVATE KEY','OPENSSH\nPRIVATE KEY')))
+    def test_bom_and_whitespace(self):self.check('\ufeff  \n'+self.value)
+    def test_absent_markers_report_only_presence(self):
+        with self.assertRaisesRegex(KeyFormatError,'begin=absent, end=absent'):normalize('not-private-key-material')
     def test_public_key_is_not_accepted(self):
         with self.assertRaisesRegex(KeyFormatError,'PUBLIC key'):normalize(self.original.with_suffix('.pub').read_text())
     def test_encrypted_key_requires_appropriate_authentication(self):
