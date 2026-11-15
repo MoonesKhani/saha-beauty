@@ -4,6 +4,7 @@ Uses the same pinned SSH configuration as approved_transport.sh. Never retries
 an application failure or an uncertain switch by starting another transaction.
 """
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import re
@@ -11,15 +12,17 @@ from pathlib import Path
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 
-CHUNK_BYTES=4*1024**2
+CHUNK_BYTES=256*1024
+CHUNK_TIMEOUT=90
 
 class TransferError(RuntimeError):pass
 class TemporaryTransportError(TransferError):pass
 
 class Sender:
-    def __init__(self,ssh,bundle,commit,report,*,expected_image,attempt='1-1',attempts=4,sleep=time.sleep,clock=time.monotonic):
+    def __init__(self,ssh,bundle,commit,report,*,expected_image,attempt='1-1',attempts=2,sleep=time.sleep,clock=time.monotonic):
         self.ssh=ssh;self.bundle=Path(bundle);self.commit=commit;self.report=Path(report)
         if not re.fullmatch(r'sha256:[0-9a-f]{64}',expected_image):raise TransferError('Invalid expected image identity')
         self.expected_image=expected_image
@@ -31,7 +34,15 @@ class Sender:
         self.attempts=attempts;self.sleep=sleep;self.clock=clock
     def request(self,command,data=None,timeout=60):
         try:
-            result=subprocess.run(self.ssh+[command],input=data,capture_output=True,timeout=timeout)
+            # A regular-file stdin gives SSH its EOF directly and removes the
+            # parent-to-SSH pipe from bulk transfer. communicate still drains
+            # stdout/stderr; status commands receive no inherited stdin.
+            with ExitStack() as stack:
+                source=subprocess.DEVNULL
+                if data is not None:
+                    source=stack.enter_context(tempfile.TemporaryFile())
+                    source.write(data);source.seek(0)
+                result=subprocess.run(self.ssh+[command],stdin=source,capture_output=True,timeout=timeout)
         except subprocess.TimeoutExpired as error:
             raise TemporaryTransportError('SSH timed out; querying the durable remote offset before retry') from error
         if result.returncode:
@@ -55,10 +66,10 @@ class Sender:
                 self.sleep(min(5*(attempt+1),20))
     def upload(self):
         deadline=self.clock()+50*60
-        failures=0
+        failures=0;info=None
         while True:
             if self.clock()>deadline:raise TransferError('Upload time budget exceeded; installation NOT requested. Rerun after fixing connectivity; verified chunks are retained')
-            info=self.query()
+            if info is None:info=self.query()
             offset=info.get('bytes')
             if type(offset) is not int or not 0<=offset<=self.size:raise TransferError('Invalid remote transfer offset')
             if info.get('complete'):
@@ -71,10 +82,15 @@ class Sender:
             chunk_hash=hashlib.sha256(chunk).hexdigest()
             command=f'upload-chunk {self.identity} {offset} {len(chunk)} {chunk_hash}'
             try:
-                self.request(command,chunk,timeout=300)
+                print(f'Uploading chunk: offset={offset}, bytes={len(chunk)}, timeout={CHUNK_TIMEOUT}s',flush=True)
+                acknowledgement=self.request(command,chunk,timeout=CHUNK_TIMEOUT)
+                if acknowledgement.get('protocol')!=2 or acknowledgement.get('bytes')!=offset+len(chunk):
+                    raise TransferError('Invalid chunk acknowledgement; installation blocked')
+                info=acknowledgement # Reuse the verified ACK; query again only after an uncertain send.
                 failures=0
                 print(f'Upload progress: {offset+len(chunk)}/{self.size} bytes ({100*(offset+len(chunk))/self.size:.1f}%)',flush=True)
             except TemporaryTransportError as error:
+                info=None
                 failures+=1
                 if failures>=self.attempts:raise TransferError('Upload retries exhausted; installation NOT requested. Verified chunks retained for resume') from error
                 print(f'{error}; chunk retry {failures}/{self.attempts}; checking committed offset',file=sys.stderr,flush=True)

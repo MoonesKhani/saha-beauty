@@ -9,9 +9,17 @@ if (( ${#missing[@]} )); then printf 'Unavailable secret in this queued run: %s\
 [[ "$ARVAN_HOST" =~ ^[a-zA-Z0-9.:-]+$ && "$ARVAN_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$ARVAN_PORT" =~ ^[0-9]+$ ]] || exit 1
 key="$RUNNER_TEMP/saha-deploy-key"
 known="$RUNNER_TEMP/saha-known-hosts"
-trap 'rm -f "$key" "$known"' EXIT
+control="$RUNNER_TEMP/saha-deploy-control"
+cleanup() {
+  # Close only this job's private master; never leave a background SSH session.
+  if [[ -S "$control" ]]; then
+    timeout 5 ssh -F /dev/null -S "$control" -O exit -p "$ARVAN_PORT" "$ARVAN_USER@$ARVAN_HOST" >/dev/null 2>&1 || true
+  fi
+  rm -f "$key" "$known" "$control"
+}
+trap cleanup EXIT
 python3 "$(dirname "$0")/prepare_ssh_key.py" --output "$key" --known-hosts-output "$known"
-transport=(ssh -F /dev/null -i "$key" -p "$ARVAN_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$known" -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 "$ARVAN_USER@$ARVAN_HOST")
+transport=(ssh -T -F /dev/null -o IPQoS=none -o Compression=no -o ControlMaster=auto -o ControlPersist=60 -o "ControlPath=$control" -i "$key" -p "$ARVAN_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$known" -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 "$ARVAN_USER@$ARVAN_HOST")
 report="$RUNNER_TEMP/deployment-report.json"
 case "$OPERATION" in
   deploy)
