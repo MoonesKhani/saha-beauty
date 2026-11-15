@@ -13,7 +13,7 @@ from datetime import datetime,timedelta
 from zoneinfo import ZoneInfo
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from scripts.package_release import package
+from scripts.package_release import package, digest
 
 ROOT=Path(__file__).resolve().parents[1]
 def main():
@@ -54,8 +54,27 @@ def main():
                 package(commit,root/('bundle-'+commit))
             environment={**os.environ,'SAHA_DEPLOY_HEALTH_ATTEMPTS':'3'}
             updater=['bash',str(ROOT/'scripts/server-update.sh'),'--release','--project',str(project)]
-            run(updater+['--bundle',str(root/('bundle-'+b)/'release.tar'),'--commit',b],env=environment)
+            def bundle_arguments(commit):
+                bundle=root/('bundle-'+commit)/'release.tar'
+                return ['--bundle',str(bundle),'--commit',commit,'--bundle-bytes',str(bundle.stat().st_size),'--bundle-sha256',digest(bundle)]
+            # A truncated wire artifact must fail before any Docker action. The
+            # pre-existing app/db containers must keep their original IDs.
+            original_ids=subprocess.check_output(compose+['ps','-q','app','db'])
+            damaged=root/'truncated.tar';damaged.write_bytes(b'cut off')
+            args=bundle_arguments(b);args[1]=str(damaged)
+            assert subprocess.run(updater+args,env=environment).returncode!=0
+            assert subprocess.check_output(compose+['ps','-q','app','db'])==original_ids
+            assert api('/api/v1/health/ready')['database']=='ready'
+            assert not (project/'.deploy/state.json').exists()
+            assert not (project/'backups').exists()
+            run(updater+bundle_arguments(b),env=environment)
             state=json.loads((project/'.deploy/state.json').read_text());assert state['current']['commit']==b
+            release_app_id=subprocess.check_output(compose+['ps','-q','app'])
+            backup_paths=sorted((project/'backups').glob('*/database.dump'))
+            run(updater+bundle_arguments(b),env=environment)
+            assert subprocess.check_output(compose+['ps','-q','app'])==release_app_id
+            assert sorted((project/'backups').glob('*/database.dump'))==backup_paths
+            assert json.loads((project/'.deploy/state.json').read_text())==state
             # Write real durable data AFTER a release, then roll back without restoring its backup.
             day=(datetime.now(ZoneInfo('Asia/Tehran'))+timedelta(days=1)).date()
             api('/api/v1/admin/scheduling/01',{'services':[{'service_code':'hair-braid','duration_minutes':30}],'windows':[{'weekday':day.weekday(),'start_minute':540,'end_minute':720,'step_minutes':30}]},'PUT')
@@ -68,7 +87,7 @@ def main():
             run(['bash',str(ROOT/'scripts/server-update.sh'),'--rollback','--project',str(project),'--rollback-image',state['previous']['image_id']],env=environment)
             assert api('/api/v1/admin/appointments')['items'][0]['id']==reservation['reference']
             assert api(photo['src'])==image_bytes
-            failed=subprocess.run(updater+['--bundle',str(root/('bundle-'+c)/'release.tar'),'--commit',c],env=environment)
+            failed=subprocess.run(updater+bundle_arguments(c),env=environment)
             assert failed.returncode!=0
             state=json.loads((project/'.deploy/state.json').read_text());assert state['phase']=='rolled_back' and state['current']['commit']==initial
             assert api('/api/v1/admin/appointments')['items'][0]['id']==reservation['reference']

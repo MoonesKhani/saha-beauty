@@ -16,7 +16,7 @@ report="$RUNNER_TEMP/deployment-report.json"
 case "$OPERATION" in
   deploy)
     [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
-    cat "$RUNNER_TEMP/release/release.tar" | "${transport[@]}" "deploy $REVISION" > "$report" ;;
+    python3 "$(dirname "$0")/transfer_release.py" --attempt "${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}" --bundle "$RUNNER_TEMP/release/release.tar" --commit "$REVISION" --report "$report" -- "${transport[@]}" ;;
   rollback)
     [[ "$REVISION" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
     "${transport[@]}" "rollback $REVISION" > "$report" ;;

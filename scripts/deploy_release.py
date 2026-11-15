@@ -35,7 +35,19 @@ def sha256(path):
         while chunk:=file.read(1024*1024):digest.update(chunk)
     return digest.hexdigest()
 
-def unpack_bundle(bundle,stage,expected_commit):
+def verify_bundle_file(bundle,expected_bytes,expected_sha256):
+    """Check the complete wire object before opening tar or invoking Docker."""
+    if not isinstance(expected_bytes,int) or not 0 < expected_bytes <= MAX_BUNDLE:
+        raise DeploymentError('Invalid expected bundle size')
+    if not re.fullmatch(r'[0-9a-f]{64}',expected_sha256 or ''):
+        raise DeploymentError('Invalid expected bundle SHA-256')
+    actual=bundle.stat().st_size
+    if actual!=expected_bytes:
+        raise DeploymentError(f'Incomplete bundle: expected {expected_bytes} bytes, received {actual}; installation blocked')
+    if sha256(bundle)!=expected_sha256:
+        raise DeploymentError('Bundle SHA-256 mismatch; installation blocked; re-upload the artifact')
+
+def _unpack_bundle(bundle,stage,expected_commit):
     if not re.fullmatch('[0-9a-f]{40}',expected_commit):raise DeploymentError('Invalid approved commit')
     if bundle.stat().st_size>MAX_BUNDLE:raise DeploymentError('Release bundle too large')
     stage.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -47,12 +59,24 @@ def unpack_bundle(bundle,stage,expected_commit):
             with archive.extractfile(member) as source,(stage/member.name).open('xb') as target:
                 os.chmod(target.name,0o600);shutil.copyfileobj(source,target)
     manifest=json.loads((stage/'manifest.json').read_text())
+    if not isinstance(manifest,dict):raise DeploymentError('Invalid release manifest; installation blocked')
     if manifest.get('format')!=1 or manifest.get('commit')!=expected_commit or manifest.get('image_tag')!='saha-release:'+expected_commit:raise DeploymentError('Release approval mismatch')
     if not re.fullmatch(r'sha256:[0-9a-f]{64}',manifest.get('image_id','')):raise DeploymentError('Invalid image ID')
     if not re.fullmatch(r'[a-zA-Z0-9_]{1,64}',manifest.get('database_revision','')):raise DeploymentError('Invalid database revision')
     image=stage/'image.tar.gz'
     if manifest.get('image_bytes')!=image.stat().st_size or manifest.get('image_sha256')!=sha256(image):raise DeploymentError('Image checksum mismatch')
     return manifest,image
+
+
+def unpack_bundle(bundle,stage,expected_commit):
+    try:
+        return _unpack_bundle(bundle,stage,expected_commit)
+    except DeploymentError:
+        shutil.rmtree(stage,ignore_errors=True)
+        raise
+    except (tarfile.TarError,EOFError,json.JSONDecodeError,UnicodeDecodeError,TypeError,AttributeError) as error:
+        shutil.rmtree(stage,ignore_errors=True)
+        raise DeploymentError('Invalid or truncated release archive; installation blocked; re-upload the verified artifact') from error
 
 @contextmanager
 def deployment_lock(project):
@@ -70,6 +94,9 @@ def apply_release(engine,state_path,candidate,rollback=False):
     state=read_state(state_path)
     if state.get('phase') in ['switching','rollback_failed']:raise DeploymentError('An interrupted switch needs an explicit rollback before another deployment')
     old=engine.current()
+    if not rollback and state.get('phase')=='healthy' and state.get('current')==candidate and all(old.get(key)==candidate.get(key) for key in ['image_id','commit']):
+        engine.healthy(candidate)
+        return state # A retried delivery must not seed/switch/back up an already healthy release.
     if rollback:
         previous=state.get('previous')
         if not previous or previous['image_id']!=candidate['image_id']:raise DeploymentError('Rollback image differs from the approved previous image')
@@ -241,13 +268,19 @@ class ComposeEngine:
         if info['Id']!=manifest['image_id'] or (info.get('Config',{}).get('Labels') or {}).get('org.opencontainers.image.revision')!=manifest['commit']:raise DeploymentError('Loaded image identity mismatch')
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--project',type=Path,required=True);parser.add_argument('--bundle',type=Path);parser.add_argument('--commit');parser.add_argument('--rollback-image');parser.add_argument('--status',action='store_true')
+    parser=argparse.ArgumentParser();parser.add_argument('--project',type=Path,required=True);parser.add_argument('--bundle',type=Path);parser.add_argument('--commit');parser.add_argument('--bundle-bytes',type=int);parser.add_argument('--bundle-sha256');parser.add_argument('--rollback-image');parser.add_argument('--status',action='store_true')
     args=parser.parse_args();project=args.project.resolve();os.umask(0o077)
     if not project.is_dir():raise DeploymentError('Project directory not found')
     state_path=project/'.deploy/state.json'
     if args.status:print(json.dumps(read_state(state_path),sort_keys=True));return
     with deployment_lock(project),tempfile.TemporaryDirectory(prefix='release-',dir=project/'.deploy') as temporary:
-        stage=Path(temporary);engine=ComposeEngine(project,stage)
+        stage=Path(temporary)
+        if not args.rollback_image:
+            if not args.bundle or not args.commit or args.bundle_bytes is None or not args.bundle_sha256:
+                raise DeploymentError('Approved commit, expected bundle bytes and SHA-256 are required; installation blocked')
+            verify_bundle_file(args.bundle.resolve(),args.bundle_bytes,args.bundle_sha256)
+            manifest,image=unpack_bundle(args.bundle.resolve(),stage/'bundle',args.commit)
+        engine=ComposeEngine(project,stage)
         if args.rollback_image:
             if not re.fullmatch(r'sha256:[0-9a-f]{64}',args.rollback_image):raise DeploymentError('Invalid approved rollback image')
             state=read_state(state_path)
@@ -260,8 +293,6 @@ def main():
                 print(json.dumps(read_state(state_path),sort_keys=True));return
             result=apply_release(engine,state_path,{'image_id':args.rollback_image},rollback=True)
         else:
-            if not args.bundle or not args.commit:raise DeploymentError('An approved bundle and commit are required')
-            manifest,image=unpack_bundle(args.bundle.resolve(),stage/'bundle',args.commit)
             engine.load(manifest,image)
             candidate={k:manifest[k] for k in ['image_id','commit','database_revision']}
             result=apply_release(engine,state_path,candidate)
@@ -271,3 +302,4 @@ if __name__=='__main__':
     for signum in [signal.SIGTERM,signal.SIGINT,signal.SIGHUP]:signal.signal(signum,interrupted)
     try:main()
     except DeploymentError as error:raise SystemExit(str(error)) from None
+    except OSError as error:raise SystemExit(f'Release I/O error (errno {error.errno}); read deployment status before retry') from None

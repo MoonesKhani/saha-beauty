@@ -78,6 +78,14 @@ class TransactionTest(unittest.TestCase):
         self.engine.healthy=fail
         with self.assertRaisesRegex(DeploymentError,'rollback failed'):apply_release(self.engine,self.path,deepcopy(NEW))
         self.assertEqual(json.loads(self.path.read_text())['phase'],'rollback_failed');self.assert_data()
+    def test_retry_of_healthy_release_does_not_seed_switch_or_backup(self):
+        state=apply_release(self.engine,self.path,deepcopy(NEW))
+        before=list(self.engine.calls)
+        # ComposeEngine.current exposes runtime identity, not the schema field.
+        self.engine.current=lambda: {key:NEW[key] for key in ['image_id','commit']}
+        result=apply_release(self.engine,self.path,deepcopy(NEW))
+        self.assertEqual(result,state);self.assertEqual(self.engine.calls,before);self.assert_data()
+
     def test_server_lock_rejects_simultaneous_deployments(self):
         with deployment_lock(self.root):
             with self.assertRaises(DeploymentError):
@@ -111,7 +119,7 @@ class BundleTest(unittest.TestCase):
             with self.assertRaises(DeploymentError):unpack_bundle(self.bundle(extra=item),self.root/f'stage{index}',SHA)
             self.assertFalse((self.root/'outside').exists())
     def test_receive_size_limit(self):
-        with self.assertRaises(ValueError):receive(BytesIO(b'a'*100),self.root/'incoming',limit=50)
+        with self.assertRaises(ValueError):receive(BytesIO(b'a'*100),self.root/'incoming',100,'0'*64,limit=50)
 
 class ApprovalTest(unittest.TestCase):
     def valid_run(self):return {'repository':{'full_name':'MoonesKhani/saha-beauty'},'head_repository':{'full_name':'MoonesKhani/saha-beauty'},'head_sha':SHA,'head_branch':'main','event':'push','status':'completed','conclusion':'success','path':'.github/workflows/ci.yml'}
