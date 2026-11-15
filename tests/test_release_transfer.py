@@ -4,6 +4,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -66,6 +67,35 @@ class TransferTests(unittest.TestCase):
                         f'transfer-info {SHA} '+ '0'*64+' 9999999999',
                         f'deploy-verified {SHA} '+ '0'*64+' 20; id']:
             with self.assertRaises(ValueError):parse_command(command)
+    def test_real_pipe_eof_across_receiver_processes_can_resume(self):
+        project=self.root/'project';project.mkdir()
+        (self.root/'config.json').write_text(json.dumps({'project':str(project)}))
+        program="""
+import json,os,sys
+from pathlib import Path
+from unittest.mock import patch
+from scripts import deploy_receiver as receiver
+receiver.ROOT=Path(sys.argv[1])
+os.environ['SSH_ORIGINAL_COMMAND']=sys.argv[2]
+receiver.transaction_info=lambda store,project: {}
+try:
+ with patch.object(receiver.shutil,'disk_usage',return_value=type('Disk',(),{'free':8*1024**3})()):
+  receiver.main()
+except (ValueError,receiver.DeploymentError) as error:
+ raise SystemExit(str(error))
+"""
+        def child(command,data=b''):
+            return subprocess.run([sys.executable,'-c',program,str(self.root),command],input=data,capture_output=True)
+        first=self.data[:8];second=self.data[8:]
+        identity=f'{SHA} {digest(self.data)} {len(self.data)}'
+        self.assertEqual(child(f'upload-chunk {identity} 0 8 {digest(first)}',first).returncode,0)
+        cut=child(f'upload-chunk {identity} 8 {len(second)} {digest(second)}',second[:2])
+        self.assertNotEqual(cut.returncode,0);self.assertIn(b'Incomplete transfer',cut.stderr)
+        info=child('transfer-info '+identity+' 1-1')
+        self.assertEqual(json.loads(info.stdout)['bytes'],8)
+        self.assertEqual(child(f'upload-chunk {identity} 8 {len(second)} {digest(second)}',second).returncode,0)
+        self.assertEqual(self.store.bundle.read_bytes(),self.data)
+
     def test_valid_protocol_commands(self):
         identity=f'{SHA} {digest(self.data)} {len(self.data)} 1-1'
         self.assertEqual(parse_command('transfer-info '+identity),('transfer-info',(SHA,digest(self.data),len(self.data),'1-1')))

@@ -59,6 +59,7 @@ def _unpack_bundle(bundle,stage,expected_commit):
             with archive.extractfile(member) as source,(stage/member.name).open('xb') as target:
                 os.chmod(target.name,0o600);shutil.copyfileobj(source,target)
     manifest=json.loads((stage/'manifest.json').read_text())
+    if not isinstance(manifest,dict):raise DeploymentError('Invalid release manifest; installation blocked')
     if manifest.get('format')!=1 or manifest.get('commit')!=expected_commit or manifest.get('image_tag')!='saha-release:'+expected_commit:raise DeploymentError('Release approval mismatch')
     if not re.fullmatch(r'sha256:[0-9a-f]{64}',manifest.get('image_id','')):raise DeploymentError('Invalid image ID')
     if not re.fullmatch(r'[a-zA-Z0-9_]{1,64}',manifest.get('database_revision','')):raise DeploymentError('Invalid database revision')
@@ -73,7 +74,7 @@ def unpack_bundle(bundle,stage,expected_commit):
     except DeploymentError:
         shutil.rmtree(stage,ignore_errors=True)
         raise
-    except (tarfile.TarError,EOFError,json.JSONDecodeError,UnicodeDecodeError) as error:
+    except (tarfile.TarError,EOFError,json.JSONDecodeError,UnicodeDecodeError,TypeError,AttributeError) as error:
         shutil.rmtree(stage,ignore_errors=True)
         raise DeploymentError('Invalid or truncated release archive; installation blocked; re-upload the verified artifact') from error
 
@@ -301,3 +302,4 @@ if __name__=='__main__':
     for signum in [signal.SIGTERM,signal.SIGINT,signal.SIGHUP]:signal.signal(signum,interrupted)
     try:main()
     except DeploymentError as error:raise SystemExit(str(error)) from None
+    except OSError as error:raise SystemExit(f'Release I/O error (errno {error.errno}); read deployment status before retry') from None
