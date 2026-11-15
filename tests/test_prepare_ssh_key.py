@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from scripts.prepare_ssh_key import KeyFormatError,normalize,prepare
+from scripts.prepare_ssh_key import KeyFormatError,normalize,prepare,prepare_credentials
 
 class PrivateKeyFormattingTest(unittest.TestCase):
     def setUp(self):
@@ -38,6 +38,20 @@ class PrivateKeyFormattingTest(unittest.TestCase):
     def test_bom_and_whitespace(self):self.check('\ufeff  \n'+self.value)
     def test_absent_markers_report_only_presence(self):
         with self.assertRaisesRegex(KeyFormatError,'begin=absent, end=absent'):normalize('not-private-key-material')
+    def test_reversed_secret_assignments_are_repaired_only_in_runner(self):
+        hosts='37.32.39.8 '+self.original.with_suffix('.pub').read_text()
+        before=(hosts,self.value);key=self.root/'prepared';known=self.root/'known'
+        _,swapped=prepare_credentials(hosts,self.value,key,known)
+        self.assertTrue(swapped);self.assertEqual((hosts,self.value),before)
+        self.assertEqual(known.read_text(),hosts.strip()+'\n')
+        self.assertEqual(subprocess.check_output(['ssh-keygen','-y','-f',str(key)]),subprocess.check_output(['ssh-keygen','-y','-f',str(self.original)]))
+    def test_normal_secret_assignments_remain_normal(self):
+        hosts='37.32.39.8 '+self.original.with_suffix('.pub').read_text()
+        _,swapped=prepare_credentials(self.value,hosts,self.root/'prepared',self.root/'known')
+        self.assertFalse(swapped)
+    def test_invalid_host_key_is_not_trusted(self):
+        with self.assertRaises(KeyFormatError):prepare_credentials(self.value,'not a host key',self.root/'prepared',self.root/'known')
+        self.assertFalse((self.root/'prepared').exists())
     def test_public_key_is_not_accepted(self):
         with self.assertRaisesRegex(KeyFormatError,'PUBLIC key'):normalize(self.original.with_suffix('.pub').read_text())
     def test_encrypted_key_requires_appropriate_authentication(self):

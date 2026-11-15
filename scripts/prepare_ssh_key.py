@@ -73,10 +73,38 @@ def prepare(value,path):
         raise KeyFormatError('Normalized private key still cannot be parsed; key data is invalid or unsupported. No secret value was logged')
     return changes
 
+def is_known_hosts(value):
+    lines=[line.strip() for line in value.replace('\r','').replace('\\n','\n').splitlines() if line.strip() and not line.lstrip().startswith('#')]
+    pattern=r'(?:@cert-authority\s+|@revoked\s+)?\S+\s+(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-\S+)\s+[A-Za-z0-9+/]+=*(?:\s+.*)?'
+    return bool(lines) and all(re.fullmatch(pattern,line) for line in lines)
+
+def prepare_credentials(key_value,hosts_value,key_path,hosts_path):
+    swapped=False
+    if is_known_hosts(key_value):
+        try:normalize(hosts_value)
+        except KeyFormatError:
+            raise KeyFormatError('ARVAN_SSH_KEY contains host-key data, but the other secret is not a readable private key; no secret was changed') from None
+        key_value,hosts_value=hosts_value,key_value;swapped=True
+    changes=prepare(key_value,key_path)
+    if not is_known_hosts(hosts_value):
+        key_path.unlink(missing_ok=True)
+        raise KeyFormatError('ARVAN_KNOWN_HOSTS is not a known_hosts entry; strict host verification remains required')
+    hosts=hosts_value.replace('\r\n','\n').replace('\r','\n').replace('\\n','\n').strip()+'\n'
+    try:
+        descriptor=os.open(hosts_path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(descriptor,'w') as file:file.write(hosts)
+    except Exception:
+        key_path.unlink(missing_ok=True);raise
+    return changes,swapped
+
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);args=parser.parse_args()
-    try:changes=prepare(os.environ.get('ARVAN_SSH_KEY',''),args.output)
+    parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);parser.add_argument('--known-hosts-output',type=Path);args=parser.parse_args()
+    try:
+        if args.known_hosts_output:
+            changes,swapped=prepare_credentials(os.environ.get('ARVAN_SSH_KEY',''),os.environ.get('ARVAN_KNOWN_HOSTS',''),args.output,args.known_hosts_output)
+        else:changes=prepare(os.environ.get('ARVAN_SSH_KEY',''),args.output);swapped=False
     except KeyFormatError as error:raise SystemExit(str(error)) from None
     print('ARVAN_SSH_KEY: private-key parsing succeeded; GitHub Secret unchanged')
+    if swapped:print('Private-key and known-hosts values were assigned to opposite secret names; runner bindings corrected, repository secrets unchanged')
     if changes:print('Temporary-file formatting normalized: '+', '.join(changes))
 if __name__=='__main__':main()
