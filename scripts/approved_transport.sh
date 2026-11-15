@@ -10,8 +10,7 @@ if (( ${#missing[@]} )); then printf 'Unavailable secret in this queued run: %s\
 key="$RUNNER_TEMP/saha-deploy-key"
 known="$RUNNER_TEMP/saha-known-hosts"
 trap 'rm -f "$key" "$known"' EXIT
-python3 "$(dirname "$0")/prepare_ssh_key.py" --output "$key"
-printf '%s\n' "$ARVAN_KNOWN_HOSTS" > "$known"
+python3 "$(dirname "$0")/prepare_ssh_key.py" --output "$key" --known-hosts-output "$known"
 transport=(ssh -F /dev/null -i "$key" -p "$ARVAN_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$known" -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 "$ARVAN_USER@$ARVAN_HOST")
 report="$RUNNER_TEMP/deployment-report.json"
 case "$OPERATION" in
