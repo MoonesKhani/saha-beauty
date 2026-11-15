@@ -94,7 +94,7 @@ def apply_release(engine,state_path,candidate,rollback=False):
     state=read_state(state_path)
     if state.get('phase') in ['switching','rollback_failed']:raise DeploymentError('An interrupted switch needs an explicit rollback before another deployment')
     old=engine.current()
-    if not rollback and state.get('phase')=='healthy' and state.get('current')==candidate and old==candidate:
+    if not rollback and state.get('phase')=='healthy' and state.get('current')==candidate and all(old.get(key)==candidate.get(key) for key in ['image_id','commit']):
         engine.healthy(candidate)
         return state # A retried delivery must not seed/switch/back up an already healthy release.
     if rollback:

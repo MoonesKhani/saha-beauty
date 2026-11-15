@@ -81,6 +81,8 @@ class TransactionTest(unittest.TestCase):
     def test_retry_of_healthy_release_does_not_seed_switch_or_backup(self):
         state=apply_release(self.engine,self.path,deepcopy(NEW))
         before=list(self.engine.calls)
+        # ComposeEngine.current exposes runtime identity, not the schema field.
+        self.engine.current=lambda: {key:NEW[key] for key in ['image_id','commit']}
         result=apply_release(self.engine,self.path,deepcopy(NEW))
         self.assertEqual(result,state);self.assertEqual(self.engine.calls,before);self.assert_data()
 
