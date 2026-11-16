@@ -28,13 +28,15 @@ class ArvanTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup);self.root=Path(self.temp.name);self.sender=Sender(self.root)
     def location(self):return POLICY['endpoint']+'/'+POLICY['bucket']+'/'+POLICY['prefix']+COMMIT+'/'+'b'*64+'.zip?X-Amz-Signature=offline-fixture'
     def test_sdk_is_explicitly_configured_without_network_or_instance_credentials(self):
-        with patch.dict(os.environ,{'ARVAN_STORAGE_ACCESS_KEY_ID':'offline-fixture','ARVAN_STORAGE_SECRET_ACCESS_KEY':'offline-fixture'}):
-            storage=client(POLICY)
-        self.addCleanup(storage.close)
-        self.assertEqual(storage.meta.endpoint_url,POLICY['endpoint'])
-        self.assertEqual(storage.meta.config.signature_version,'s3v4')
-        self.assertEqual(storage.meta.config.s3['addressing_style'],'path')
-        self.assertEqual(storage.meta.config.request_checksum_calculation,'when_required')
+        with patch.dict(os.environ,{'ARVAN_STORAGE_ACCESS_KEY_ID':'offline-fixture','ARVAN_STORAGE_SECRET_ACCESS_KEY':'offline-fixture'}),patch('boto3.client') as factory:
+            client(POLICY)
+        options=factory.call_args.kwargs;config=options['config']
+        self.assertEqual(options['endpoint_url'],POLICY['endpoint'])
+        self.assertEqual(options['aws_access_key_id'],'offline-fixture')
+        self.assertEqual(options['aws_secret_access_key'],'offline-fixture')
+        self.assertEqual(config.signature_version,'s3v4')
+        self.assertEqual(config.s3['addressing_style'],'path')
+        self.assertEqual(config.request_checksum_calculation,'when_required')
     def test_destination_is_exact_and_confined(self):
         location=self.location();self.assertEqual(valid_url(location,policy=POLICY),location)
         for changed in [location.replace('saha-private-fixture','other-bucket'),location.replace('/saha-releases/','/user-uploads/'),location.replace('/saha-releases/','/saha-releases/../'),location.replace('/saha-releases/','/saha-releases/%2e%2e/'),location.replace('ir-fixture.arvanstorage.ir','ir-other.arvanstorage.ir'),location.replace('https:','http:'),location.replace('https://','https://user:private@')]:
