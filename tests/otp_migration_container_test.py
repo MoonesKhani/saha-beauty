@@ -38,7 +38,7 @@ def main():
             request=urllib.request.Request(f'http://127.0.0.1:{port}'+path)
             with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(request,timeout=3) as response:return json.load(response)
         try:
-            run(compose+['up','-d','--pull','never','db'])
+            run(compose+['up','-d','--wait','--wait-timeout','60','--pull','never','db'])
             init="from alembic.config import Config; from alembic import command; command.upgrade(Config('database/alembic.ini'),'0004_packages')"
             run(compose+['run','--rm','--no-deps','--pull','never','--entrypoint','python','app','-c',init])
             run(compose+['run','--rm','--no-deps','--pull','never','--entrypoint','python','app','-m','backend.app.cli','seed'])
