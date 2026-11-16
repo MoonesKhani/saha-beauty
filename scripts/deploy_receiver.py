@@ -153,7 +153,14 @@ def main():
     if operation=='site':
         export_site(project,identity,ROOT);return
     if operation=='status':
-        print(json.dumps({**read_state(project/'.deploy/state.json'),'transfer_protocol':3,'artifact_fetch':True},sort_keys=True));return
+        try:
+            from .artifact_fetch import installed_storage_policy,storage_policy_hash
+        except ImportError:
+            from artifact_fetch import installed_storage_policy,storage_policy_hash
+        policy_hash=None
+        try:policy_hash=storage_policy_hash(installed_storage_policy())
+        except ValueError:pass
+        print(json.dumps({**read_state(project/'.deploy/state.json'),'transfer_protocol':3,'artifact_fetch':True,'arvan_fetch':policy_hash is not None,'arvan_policy_hash':policy_hash},sort_keys=True));return
     if operation=='deploy':
         raise ValueError('Legacy unframed deploy disabled: upgrade the runner to verified transfer protocol 2; installation NOT started')
     inbox=ROOT/'inbox';inbox.mkdir(exist_ok=True,mode=0o700)

@@ -139,7 +139,7 @@ class Sender:
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('--otp-migration',action='store_true');parser.add_argument('--https-artifact',action='store_true');parser.add_argument('--attempt',required=True);parser.add_argument('--bundle',required=True);parser.add_argument('--commit',required=True);parser.add_argument('--report',required=True)
+    parser.add_argument('--otp-migration',action='store_true');mode=parser.add_mutually_exclusive_group();mode.add_argument('--https-artifact',action='store_true');mode.add_argument('--arvan-artifact',action='store_true');parser.add_argument('--attempt',required=True);parser.add_argument('--bundle',required=True);parser.add_argument('--commit',required=True);parser.add_argument('--report',required=True)
     parser.add_argument('ssh',nargs=argparse.REMAINDER)
     args=parser.parse_args();ssh=args.ssh[1:] if args.ssh[:1]==['--'] else args.ssh
     if not ssh:parser.error('SSH command required')
@@ -154,6 +154,10 @@ def main():
     sender=Sender(ssh,args.bundle,args.commit,args.report,expected_image=manifest.get('image_id',''),attempt=args.attempt)
     if args.https_artifact:
         sender.upload=lambda:stage(sender,os.environ.get('BUILD_RUN_ID',''),'saha-release-'+args.commit)
+    if args.arvan_artifact:
+        try:from .arvan_transfer import stage as arvan_stage
+        except ImportError:from arvan_transfer import stage as arvan_stage
+        sender.upload=lambda:arvan_stage(sender)
     sender.deploy(migration=args.otp_migration)
 if __name__=='__main__':
     try:main()

@@ -35,10 +35,11 @@ jobs:
           cache-dependency-path: |
             backend/requirements*.txt
             backend/constraints.txt
+            scripts/requirements-transfer.txt
       - name: Install pinned dependencies
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install -c backend/constraints.txt -r backend/requirements-dev.txt -r backend/requirements-postgres.txt playwright==1.56.0
+          .venv/bin/python -m pip install -c backend/constraints.txt -r backend/requirements-dev.txt -r backend/requirements-postgres.txt -r scripts/requirements-transfer.txt playwright==1.56.0
           .venv/bin/python -m pip check
           sudo apt-get update
           sudo apt-get install -y ffmpeg

@@ -8,6 +8,11 @@ on:
         type: choice
         options: [deploy, otp-migration, rollback, status]
         required: true
+      transport:
+        description: 'Verified transfer backend; Arvan requires pinned receiver configuration'
+        type: choice
+        options: [arvan, azure]
+        default: arvan
       revision:
         description: 'Deploy: full approved commit SHA. Rollback: approved previous sha256:image ID.'
         type: string
@@ -80,6 +85,12 @@ jobs:
         if: inputs.operation == 'deploy' || inputs.operation == 'otp-migration'
         working-directory: ${{ runner.temp }}/release
         run: sha256sum --check release.tar.sha256
+      - name: Install Arvan runner transfer dependencies
+        if: inputs.transport == 'arvan' && (inputs.operation == 'deploy' || inputs.operation == 'otp-migration')
+        run: |
+          python3 -m venv "$RUNNER_TEMP/arvan-transfer-env"
+          "$RUNNER_TEMP/arvan-transfer-env/bin/python" -m pip install -r scripts/requirements-transfer.txt
+          echo "$RUNNER_TEMP/arvan-transfer-env/bin" >> "$GITHUB_PATH"
       - name: Execute the approved transaction over verified SSH
         id: transaction
         env:
@@ -92,6 +103,13 @@ jobs:
           REVISION: ${{ inputs.revision }}
           BUILD_RUN_ID: ${{ inputs.build_run_id }}
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TRANSPORT: ${{ inputs.transport }}
+          ARVAN_STORAGE_ENDPOINT: ${{ vars.ARVAN_STORAGE_ENDPOINT }}
+          ARVAN_STORAGE_BUCKET: ${{ vars.ARVAN_STORAGE_BUCKET }}
+          ARVAN_STORAGE_REGION: ${{ vars.ARVAN_STORAGE_REGION }}
+          ARVAN_STORAGE_PREFIX: ${{ vars.ARVAN_STORAGE_PREFIX || 'saha-releases/' }}
+          ARVAN_STORAGE_ACCESS_KEY_ID: ${{ secrets.ARVAN_STORAGE_ACCESS_KEY_ID }}
+          ARVAN_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.ARVAN_STORAGE_SECRET_ACCESS_KEY }}
         shell: bash
         run: bash scripts/approved_transport.sh
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3

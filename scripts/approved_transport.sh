@@ -34,9 +34,12 @@ case "$OPERATION" in
   probe)
     python3 "$(dirname "$0")/transfer_probe.py" --commit "$REVISION" -- "${transport[@]}"; exit 0 ;;
   deploy|otp-migration)
-    extra=(); if [[ "$OPERATION" == otp-migration ]]; then extra+=(--otp-migration); fi
+    extra=(--https-artifact)
+    if [[ "${RELEASE_TRANSPORT:-arvan}" == arvan ]]; then extra=(--arvan-artifact);
+    elif [[ "${RELEASE_TRANSPORT:-arvan}" != azure ]]; then echo 'Unsupported transfer backend; installation not requested' >&2; exit 1; fi
+    if [[ "$OPERATION" == otp-migration ]]; then extra+=(--otp-migration); fi
     [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
-    python3 "$(dirname "$0")/transfer_release.py" "${extra[@]}" --https-artifact --attempt "${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}" --bundle "$RUNNER_TEMP/release/release.tar" --commit "$REVISION" --report "$report" -- "${transport[@]}" ;;
+    python3 "$(dirname "$0")/transfer_release.py" "${extra[@]}" --attempt "${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}" --bundle "$RUNNER_TEMP/release/release.tar" --commit "$REVISION" --report "$report" -- "${transport[@]}" ;;
   rollback)
     [[ "$REVISION" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
     "${transport[@]}" "rollback $REVISION" > "$report" ;;
