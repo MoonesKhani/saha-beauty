@@ -7,6 +7,7 @@ import argparse
 from contextlib import ExitStack
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 import subprocess
@@ -14,6 +15,11 @@ import sys
 import tarfile
 import tempfile
 import time
+
+try:
+    from .https_release import stage, DownloadError
+except ImportError:
+    from https_release import stage, DownloadError
 
 CHUNK_BYTES=256*1024
 CHUNK_TIMEOUT=90
@@ -49,7 +55,7 @@ class Sender:
             # No secret/environment output. Receiver diagnostics contain only
             # bounded transfer metadata; SSH diagnostics are kept by the runner.
             diagnostic=result.stderr.decode(errors='replace')[-2000:].strip()
-            if result.returncode==255 or 'Transfer busy;' in diagnostic:
+            if result.returncode==255 or 'Transfer busy;' in diagnostic or 'Broken pipe' in diagnostic:
                 raise TemporaryTransportError(f'SSH transfer interrupted (exit {result.returncode}): {diagnostic}')
             raise TransferError(f'Receiver rejected operation (exit {result.returncode}): {diagnostic}')
         try:return json.loads(result.stdout)
@@ -99,13 +105,13 @@ class Sender:
         state=info.get('deployment') or {}
         current=state.get('current') or {}
         return state if state.get('phase')=='healthy' and current.get('commit')==self.commit and current.get('image_id')==self.expected_image else None
-    def deploy(self):
+    def deploy(self,migration=False):
         self.upload()
         # Same deterministic unit: retries of the start request only reconnect
         # to an existing transaction; they never create another installation.
         for attempt in range(self.attempts):
             try:
-                self.request('deploy-verified '+self.transaction_identity,timeout=180)
+                self.request(('migrate-otp ' if migration else 'deploy-verified ')+self.transaction_identity,timeout=180)
                 break
             except TemporaryTransportError as error:
                 info=self.query()
@@ -133,7 +139,7 @@ class Sender:
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('--attempt',required=True);parser.add_argument('--bundle',required=True);parser.add_argument('--commit',required=True);parser.add_argument('--report',required=True)
+    parser.add_argument('--otp-migration',action='store_true');parser.add_argument('--https-artifact',action='store_true');parser.add_argument('--attempt',required=True);parser.add_argument('--bundle',required=True);parser.add_argument('--commit',required=True);parser.add_argument('--report',required=True)
     parser.add_argument('ssh',nargs=argparse.REMAINDER)
     args=parser.parse_args();ssh=args.ssh[1:] if args.ssh[:1]==['--'] else args.ssh
     if not ssh:parser.error('SSH command required')
@@ -145,7 +151,10 @@ def main():
         if manifest.get('commit')!=args.commit:raise TransferError('Artifact commit differs from approval')
     except (tarfile.TarError,KeyError,ValueError) as error:
         raise TransferError('Invalid local artifact; upload and installation blocked') from error
-    Sender(ssh,args.bundle,args.commit,args.report,expected_image=manifest.get('image_id',''),attempt=args.attempt).deploy()
+    sender=Sender(ssh,args.bundle,args.commit,args.report,expected_image=manifest.get('image_id',''),attempt=args.attempt)
+    if args.https_artifact:
+        sender.upload=lambda:stage(sender,os.environ.get('BUILD_RUN_ID',''),'saha-release-'+args.commit)
+    sender.deploy(migration=args.otp_migration)
 if __name__=='__main__':
     try:main()
-    except TransferError as error:raise SystemExit(str(error)) from None
+    except (TransferError, DownloadError) as error:raise SystemExit(str(error)) from None

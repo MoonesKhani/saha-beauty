@@ -1,0 +1,45 @@
+name: Verify small HTTPS artifact (no deployment)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: saha-production
+  cancel-in-progress: false
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: saha-production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare a small non-installable test payload
+        run: |
+          python3 - <<'PY'
+          import hashlib,os
+          from pathlib import Path
+          folder=Path(os.environ['RUNNER_TEMP'])/'https-probe';folder.mkdir()
+          data=b'Saha HTTPS transfer test; not an installable image.\n'+os.urandom(128*1024)
+          (folder/'release.tar').write_bytes(data)
+          (folder/'release.tar.sha256').write_text(hashlib.sha256(data).hexdigest()+'  release.tar\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: saha-https-probe-${{ github.run_id }}
+          path: ${{ runner.temp }}/https-probe/*
+          compression-level: 0
+          retention-days: 1
+      - name: Test HTTPS range, ZIP and bundle integrity without installation
+        env:
+          ARVAN_SSH_KEY: ${{ secrets.ARVAN_SSH_KEY }}
+          ARVAN_KNOWN_HOSTS: ${{ secrets.ARVAN_KNOWN_HOSTS }}
+          ARVAN_HOST: ${{ vars.ARVAN_HOST || '37.32.39.8' }}
+          ARVAN_USER: ${{ vars.ARVAN_USER || 'root' }}
+          ARVAN_PORT: ${{ vars.ARVAN_PORT || '22' }}
+          OPERATION: artifact-probe
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/approved_transport.sh

@@ -21,7 +21,12 @@ ROOT=Path('/opt/saha-deploy')
 
 def parse_command(command):
     if command=='status':return 'status',None
-    match=re.fullmatch(r'(transfer-info|deploy-verified) ([0-9a-f]{40}) ([0-9a-f]{64}) ([1-9][0-9]{0,9}) ([1-9][0-9]{0,19}-[1-9][0-9]{0,3})',command)
+    match=re.fullmatch(r'(probe-artifact|fetch-artifact|check-artifact) ([0-9a-f]{40}) ([0-9a-f]{64}) ([1-9][0-9]{0,9}) ([0-9a-f]{64}) ([1-9][0-9]{0,9})',command)
+    if match:
+        mode,commit,tar_hash,tar_size,zip_hash,zip_size=match.groups()
+        if max(int(tar_size),int(zip_size))>MAX_BUNDLE:raise ValueError('Artifact too large')
+        return mode,(commit,tar_hash,int(tar_size),zip_hash,int(zip_size))
+    match=re.fullmatch(r'(transfer-info|deploy-verified|migrate-otp) ([0-9a-f]{40}) ([0-9a-f]{64}) ([1-9][0-9]{0,9}) ([1-9][0-9]{0,19}-[1-9][0-9]{0,3})',command)
     if match:
         mode,commit,digest,size,attempt=match.groups()
         if int(size)>MAX_BUNDLE:raise ValueError('Bundle too large')
@@ -148,11 +153,33 @@ def main():
     if operation=='site':
         export_site(project,identity,ROOT);return
     if operation=='status':
-        print(json.dumps({**read_state(project/'.deploy/state.json'),'transfer_protocol':2},sort_keys=True));return
+        print(json.dumps({**read_state(project/'.deploy/state.json'),'transfer_protocol':3,'artifact_fetch':True},sort_keys=True));return
     if operation=='deploy':
         raise ValueError('Legacy unframed deploy disabled: upgrade the runner to verified transfer protocol 2; installation NOT started')
     inbox=ROOT/'inbox';inbox.mkdir(exist_ok=True,mode=0o700)
-    if operation in ('transfer-info','upload-chunk','deploy-verified'):
+    if operation in ('probe-artifact','fetch-artifact','check-artifact'):
+        try:
+            from . import artifact_fetch
+        except ImportError:
+            import artifact_fetch
+        raw=sys.stdin.buffer.read(16385)
+        if len(raw)>16384:raise ValueError('Artifact location message too large')
+        try:
+            message=json.loads(raw)
+            if not isinstance(message,dict) or set(message)!={'url'}:raise ValueError()
+            location=artifact_fetch.valid_url(message['url'])
+        except (ValueError,KeyError,TypeError):raise ValueError('Invalid artifact location message; credentials are not logged') from None
+        commit,tar_hash,tar_size,zip_hash,zip_size=identity
+        artifact_fetch.validate_spec(tar_hash,tar_size,zip_hash,zip_size)
+        if operation=='probe-artifact':
+            print(json.dumps(artifact_fetch.probe(location,zip_size)));return
+        if operation=='check-artifact' and max(tar_size,zip_size)>512*1024:raise ValueError('HTTPS diagnostic exceeds its small fixed limit')
+        if shutil.disk_usage(inbox).free<4*1024**3:raise ValueError('Insufficient disk for verified artifact staging')
+        store=TransferStore(inbox,commit,tar_hash,tar_size)
+        with store.lock():
+            print(json.dumps(artifact_fetch.fetch(location,store.bundle,tar_hash,tar_size,zip_hash,zip_size,budget=20 if operation=='check-artifact' else 300)))
+        return
+    if operation in ('transfer-info','upload-chunk','deploy-verified','migrate-otp'):
         store=TransferStore(inbox,*identity[:3],attempt=identity[3] if operation!='upload-chunk' else '1-1')
         with store.lock():store.recover_append()
         if operation=='upload-chunk':
@@ -171,6 +198,8 @@ def main():
                 with tempfile.TemporaryDirectory(prefix='validate-',dir=store.folder) as temporary:
                     unpack_bundle(store.bundle,Path(temporary)/'bundle',store.commit)
                 arguments=['bash',str(updater),'--release','--project',str(project),'--bundle',str(store.bundle),'--commit',store.commit,'--bundle-bytes',str(store.size),'--bundle-sha256',store.digest]
+                if operation=='migrate-otp':
+                    arguments=['python3',str(ROOT/'deploy_otp_migration.py'),'--apply','--confirmation','MIGRATE OTP '+store.commit,*arguments[3:]]
                 # Start only once. The deterministic retained unit lets a runner
                 # reconnect/poll without repeating an uncertain installation.
                 subprocess.run(['systemd-run','--quiet','--unit',store.unit,'--property=Type=exec','--property=RuntimeMaxSec=1200','--property=TimeoutStopSec=90',*arguments],check=True)
