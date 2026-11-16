@@ -5,7 +5,12 @@ umask 077
 missing=()
 [[ -n "${ARVAN_SSH_KEY:-}" ]] || missing+=(ARVAN_SSH_KEY)
 [[ -n "${ARVAN_KNOWN_HOSTS:-}" ]] || missing+=(ARVAN_KNOWN_HOSTS)
-if (( ${#missing[@]} )); then printf 'Unavailable secret in this queued run: %s\n' "${missing[@]}"; echo 'Start a NEW status workflow after saving repository secrets'; exit 1; fi
+if [[ "${RELEASE_TRANSPORT:-arvan}" == arvan && ( "${OPERATION:-}" == deploy || "${OPERATION:-}" == otp-migration || "${OPERATION:-}" == artifact-probe ) ]]; then
+  for secret_name in ARVAN_STORAGE_ACCESS_KEY_ID ARVAN_STORAGE_SECRET_ACCESS_KEY; do
+    [[ -n "${!secret_name:-}" ]] || missing+=("$secret_name")
+  done
+fi
+if (( ${#missing[@]} )); then printf 'Unavailable secret in this queued run: %s\n' "${missing[@]}"; echo 'Save the missing repository secrets, then start a NEW workflow; existing secret values were not changed'; exit 1; fi
 [[ "$ARVAN_HOST" =~ ^[a-zA-Z0-9.:-]+$ && "$ARVAN_USER" =~ ^[a-z_][a-z0-9_-]*$ && "$ARVAN_PORT" =~ ^[0-9]+$ ]] || exit 1
 key="$RUNNER_TEMP/saha-deploy-key"
 known="$RUNNER_TEMP/saha-known-hosts"

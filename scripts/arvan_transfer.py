@@ -12,14 +12,16 @@ except ImportError:
     from https_release import DownloadError
 
 
+CONFIG_FILE=Path(__file__).resolve().parents[1]/'deploy/arvan-transfer.json'
+
+
 def configuration():
-    try:return storage_policy({
-        'endpoint':os.environ.get('ARVAN_STORAGE_ENDPOINT',''),
-        'bucket':os.environ.get('ARVAN_STORAGE_BUCKET',''),
-        'region':os.environ.get('ARVAN_STORAGE_REGION',''),
-        'prefix':os.environ.get('ARVAN_STORAGE_PREFIX','saha-releases/'),
-    })
-    except ValueError:raise DownloadError('Configure the exact Arvan endpoint, bucket, region and release prefix first') from None
+    try:
+        defaults=json.loads(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
+        return storage_policy({field:os.environ.get('ARVAN_STORAGE_'+field.upper()) or defaults.get(field,'saha-releases/' if field=='prefix' else '')
+            for field in ['endpoint','bucket','region','prefix']})
+    except (OSError,ValueError,TypeError,AttributeError):
+        raise DownloadError('Configure the exact Arvan endpoint, bucket, region and release prefix first') from None
 
 
 def client(config):
