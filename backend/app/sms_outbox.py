@@ -2,6 +2,7 @@
 import time
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 from fastapi import Depends, HTTPException, Request, Query
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import select, update
@@ -15,7 +16,7 @@ def enqueue(db, appointment, customer, kind, due_at):
     key=f'{kind}:{appointment.id}' + (f':{due_at}' if kind=='repair_reminder' else '')
     insert_ignore(db,SmsJob,dict(id=str(uuid4()),dedupe_key=key,appointment_id=appointment.id,
         customer_phone=customer.phone,kind=kind,status='pending',due_at=due_at,
-        started_at=None,sent_at=None,error_code=None),['dedupe_key'])
+        started_at=None,provider_reference=None,accepted_at=None,error_code=None),['dedupe_key'])
 
 
 def queue_booking_sms(db, settings, appointment, request):
@@ -43,7 +44,7 @@ def mount_sms_outbox(app,settings,session,require_admin):
     @app.get('/api/v1/admin/sms/jobs',dependencies=[Depends(require_admin)])
     def listing(limit:int=Query(default=50,ge=1,le=200),db=Depends(session)):
         enabled()
-        return {'items':[{'id':r.id,'appointment_id':r.appointment_id,'kind':r.kind,'status':r.status,'due_at':r.due_at,'error_code':r.error_code} for r in db.scalars(select(SmsJob).order_by(SmsJob.due_at.desc()).limit(limit))]}
+        return {'items':[{'id':r.id,'appointment_id':r.appointment_id,'kind':r.kind,'status':r.status,'due_at':r.due_at,'error_code':r.error_code,'provider_reference':r.provider_reference} for r in db.scalars(select(SmsJob).order_by(SmsJob.due_at.desc()).limit(limit))]}
 
     @app.post('/api/v1/admin/sms/repair-reminders',status_code=201,dependencies=[Depends(require_admin)])
     def schedule(data:ReminderInput,request:Request,db=Depends(session)):
@@ -89,17 +90,17 @@ def dispatch_one(engine, provider, settings, now=None):
         start_at=appointment.starts_at if appointment.starts_at.tzinfo else appointment.starts_at.replace(tzinfo=timezone.utc)
         if job.kind=='booking_confirmation' and (appointment.status!='confirmed' or start_at.timestamp()<=now):
             job.status='cancelled';db.commit();return 'cancelled'
-        start=start_at.isoformat()
+        start=start_at.astimezone(ZoneInfo('Asia/Tehran')).isoformat(timespec='minutes')
         identity=job.id;phone=customer.phone;kind=job.kind
         payload={'appointment_reference':appointment.id,'starts_at':start,'service_code':appointment.service_code}
         job.status='processing';job.started_at=now;db.commit()
     try:
-        provider.send_notice(phone,kind,payload)
+        receipt=provider.send_notice(phone,kind,payload)
     except Exception:
         # No raw exception: URL, OTP or provider diagnostics may include secrets.
         state='uncertain';error='delivery_unconfirmed'
     else:
-        state='sent';error=None
+        state='accepted';error=None
     with Session(engine) as db:
-        db.execute(update(SmsJob).where(SmsJob.id==identity,SmsJob.status=='processing').values(status=state,error_code=error,sent_at=now if state=='sent' else None));db.commit()
+        db.execute(update(SmsJob).where(SmsJob.id==identity,SmsJob.status=='processing').values(status=state,error_code=error,provider_reference=receipt if state=='accepted' else None,accepted_at=now if state=='accepted' else None));db.commit()
     return state

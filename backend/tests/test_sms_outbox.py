@@ -16,6 +16,7 @@ class Notices:
     def send_notice(self,*args):
         self.calls.append(args)
         if self.fail:raise TimeoutError('private-provider-diagnostic-must-not-be-stored')
+        return 'offline-receipt-fixture'
 
 
 def appointment(app):
@@ -43,7 +44,7 @@ def test_scheduling_requires_admin_consent_and_is_idempotent(auth_app):
     assert dispatch_one(app.state.engine,provider,settings,now=int(time.time()))=='empty'
     with Session(app.state.engine) as db:assert db.scalar(select(func.count()).select_from(SmsJob))==1
     # No guessed default repair interval: only the manager's supplied date is used.
-    assert dispatch_one(app.state.engine,provider,settings,now=int(due.timestamp())+1)=='sent'
+    assert dispatch_one(app.state.engine,provider,settings,now=int(due.timestamp())+1)=='accepted'
     assert len(provider.calls)==1 and provider.calls[0][1]=='repair_reminder'
     assert dispatch_one(app.state.engine,provider,settings,now=int(due.timestamp())+1)=='empty'
 

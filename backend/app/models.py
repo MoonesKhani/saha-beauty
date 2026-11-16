@@ -166,5 +166,6 @@ class SmsJob(Base):
     status: Mapped[str] = mapped_column(String(16), default='pending')
     due_at: Mapped[int] = mapped_column(BigInteger, index=True)
     started_at: Mapped[int | None] = mapped_column(BigInteger)
-    sent_at: Mapped[int | None] = mapped_column(BigInteger)
+    provider_reference: Mapped[str | None] = mapped_column(String(32))
+    accepted_at: Mapped[int | None] = mapped_column(BigInteger)
     error_code: Mapped[str | None] = mapped_column(String(40))

@@ -16,7 +16,6 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None  # Never forward a credential-bearing path to another host.
 
 class Melipayamak:
-    notifications_ready = False  # General/template API contract has not been supplied.
 
     def __init__(self, settings, transport=None):
         self.settings = settings
@@ -58,6 +57,30 @@ class Melipayamak:
             raise SmsUnavailable('provider_invalid_response')
         return code
 
+    @property
+    def notifications_ready(self):
+        return (self.settings.sms_templates_confirmed and self.settings.sms_booking_body_id>0
+                and self.settings.sms_repair_body_id>0
+                and bool(re.fullmatch(r'[A-Za-z0-9_-]{16,256}',self.settings.melipayamak_api_key.get_secret_value())))
+
     def send_notice(self, phone, kind, payload):
-        # OTP endpoint cannot send appointment messages. No guessed endpoint/template.
-        raise NotificationNotConfigured('notification_api_contract_required')
+        if not (self.settings.sms_live_enabled and self.settings.sms_notifications_enabled and self.notifications_ready):
+            raise NotificationNotConfigured('notification_templates_not_enabled')
+        if kind=='booking_confirmation':
+            body_id=self.settings.sms_booking_body_id
+            args=[str(payload['starts_at']),str(payload['appointment_reference'])]
+        elif kind=='repair_reminder':
+            body_id=self.settings.sms_repair_body_id
+            args=[str(payload['appointment_reference'])]
+        else:
+            raise NotificationNotConfigured('unknown_notification_kind')
+        key=self.settings.melipayamak_api_key.get_secret_value()
+        url='https://console.melipayamak.com/api/send/shared/'+urllib.parse.quote(key,safe='')
+        try:data=self.transport(url,{'bodyId':body_id,'to':phone,'args':args})
+        except Exception:raise SmsUnavailable('provider_unavailable') from None
+        if not isinstance(data,dict) or data.get('status') not in (None,''):
+            raise SmsUnavailable('provider_rejected')
+        receipt=data.get('recId')
+        if type(receipt) not in (str,int) or not re.fullmatch(r'[0-9]{1,32}',str(receipt)) or int(receipt)<=0:
+            raise SmsUnavailable('provider_invalid_response')
+        return str(receipt)  # Acceptance receipt, not proof of delivery to the handset.

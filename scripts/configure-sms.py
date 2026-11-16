@@ -42,6 +42,7 @@ def main():
     if not re.fullmatch(r'[A-Za-z0-9_-]{32,256}',secret):secret=secrets.token_urlsafe(48)
     values={'MELIPAYAMAK_API_KEY':value,'SAHA_OTP_SECRET':secret,
         'SAHA_OTP_ENABLED':'0','SAHA_SMS_LIVE_ENABLED':'0','SAHA_SMS_NOTIFICATIONS_ENABLED':'0',
+        'SAHA_SMS_TEMPLATES_CONFIRMED':'0',
         'MELIPAYAMAK_OTP_CONTRACT_CONFIRMED':'1','SAHA_OTP_TTL_SECONDS':'120'}
     # Preserve an existing .env and its contents in a root-private backup folder.
     backup=Path(tempfile.mkdtemp(prefix='.sms-env-backup-',dir=project));os.chmod(backup,0o700)
