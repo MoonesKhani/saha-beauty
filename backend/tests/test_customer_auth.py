@@ -181,3 +181,21 @@ def test_logout_revokes_existing_session_even_when_new_logins_disabled(auth_app)
         other.cookies.update(c.cookies)
         assert other.post('/api/v1/auth/logout',json={}).status_code==204
     assert c.get('/api/v1/auth/me').status_code==401
+
+def test_otp_login_needs_no_body_id_or_notification_templates(auth_app):
+    _,_,settings,_=auth_app
+    otp_only=replace(settings,sms_notifications_enabled=False,sms_templates_confirmed=False,
+                     sms_booking_body_id=0,sms_repair_body_id=0)
+    app=create_app(otp_only);requests=[]
+    def transport(url,body):
+        assert '/api/send/otp/' in url and '/shared/' not in url
+        assert body=={'to':PHONE} and 'bodyId' not in body
+        requests.append(body)
+        return {'code':CODE,'status':''}
+    app.state.sms_provider=Melipayamak(otp_only,transport=transport)
+    assert app.state.sms_provider.notifications_ready is False
+    with TestClient(app,base_url='https://testserver') as c:
+        assert c.get('/api/v1/auth/capabilities').json()['enabled'] is True
+        login(c)
+        assert c.get('/api/v1/auth/me').json()['verified'] is True
+    assert requests==[{'to':PHONE}]
