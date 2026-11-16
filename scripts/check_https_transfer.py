@@ -17,10 +17,15 @@ if __name__=='__main__':
     if args.bundle.stat().st_size>256*1024:raise SystemExit('Diagnostic sample is too large')
     sender=Sender(ssh,args.bundle,os.environ['GITHUB_SHA'],Path(os.environ['RUNNER_TEMP'])/'unused-diagnostic-report',expected_image='sha256:'+'0'*64)
     name='saha-https-probe-'+os.environ['GITHUB_RUN_ID']
+    transfer=lambda **options:stage(sender,os.environ['GITHUB_RUN_ID'],name,**options)
+    if os.environ.get('RELEASE_TRANSPORT')=='arvan':
+        try:from .arvan_transfer import stage as arvan_stage
+        except ImportError:from arvan_transfer import stage as arvan_stage
+        transfer=lambda **options:arvan_stage(sender,**options)
     try:
-        result=stage(sender,os.environ['GITHUB_RUN_ID'],name,probe=True)
+        result=transfer(probe=True)
         print(json.dumps(result,sort_keys=True),flush=True)
         start=time.monotonic()
-        verified=stage(sender,os.environ['GITHUB_RUN_ID'],name,check=True)
+        verified=transfer(check=True)
         print(json.dumps({'verified_small_zip':verified['complete'],'seconds':round(time.monotonic()-start,3),'installation_requested':False},sort_keys=True))
     except (TransferError,DownloadError) as error:raise SystemExit(str(error)) from None

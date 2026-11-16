@@ -1,4 +1,4 @@
-"""Fetch only signed GitHub Actions blobs over verified HTTPS; never install an image."""
+"""Fetch verified HTTPS bundles from GitHub or a pinned Arvan bucket; never install."""
 import hashlib
 import json
 import os
@@ -24,15 +24,49 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
 
-def valid_url(value):
+ARVAN_POLICY=Path('/opt/saha-deploy/arvan-transfer.json')
+
+
+def storage_policy(config):
+    if not isinstance(config,dict) or set(config)!={'endpoint','bucket','region','prefix'}:
+        raise ArtifactError('Exact storage endpoint, bucket, region and prefix required')
+    if not all(isinstance(v,str) for v in config.values()):raise ArtifactError('Invalid storage policy')
+    config=dict(config);config['endpoint']=config['endpoint'].rstrip('/')
+    url=urllib.parse.urlsplit(config['endpoint'])
+    if (url.scheme!='https' or url.username is not None or url.password is not None
+        or url.port not in (None,443) or url.path or url.query or url.fragment
+        or not re.fullmatch(r'[a-z0-9-]+(?:\.[a-z0-9-]+)*\.arvanstorage\.ir',url.hostname or '')):
+        raise ArtifactError('An HTTPS Arvan storage endpoint without a path is required')
+    if not re.fullmatch(r'[a-z0-9][a-z0-9-]{1,61}[a-z0-9]',config['bucket']):raise ArtifactError('Invalid private bucket name')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,63}',config['region']):raise ArtifactError('Invalid storage region')
+    if not re.fullmatch(r'[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*/',config['prefix']):raise ArtifactError('A confined release prefix ending in / is required')
+    return config
+
+
+def storage_policy_hash(config):
+    return hashlib.sha256(json.dumps(storage_policy(config),sort_keys=True).encode()).hexdigest()
+
+
+def installed_storage_policy():
+    try:return storage_policy(json.loads(ARVAN_POLICY.read_text()))
+    except (OSError,ValueError,TypeError):raise ArtifactError('Arvan storage destination is not configured; installation blocked') from None
+
+
+def valid_url(value,policy=None):
     if not isinstance(value,str) or len(value)>16384:raise ArtifactError('Invalid artifact location')
     try:
         url=urllib.parse.urlsplit(value)
-        valid=(url.scheme=='https' and url.username is None and url.password is None and url.port in (None,443)
+        valid=(policy is None and url.scheme=='https' and url.username is None and url.password is None and url.port in (None,443)
             and re.fullmatch(r'productionresultssa[a-z0-9]*\.blob\.core\.windows\.net',url.hostname or '')
             and url.path not in ('','/') and not url.fragment)
-    except ValueError:valid=False
-    if not valid:raise ArtifactError('Only the signed GitHub Actions Azure artifact host is accepted')
+    except ValueError:raise ArtifactError('Invalid artifact location') from None
+    if not valid:
+        config=storage_policy(policy) if policy is not None else installed_storage_policy()
+        endpoint=urllib.parse.urlsplit(config['endpoint'])
+        pattern='/'+re.escape(config['bucket']+'/'+config['prefix'])+r'[0-9a-f]{40}/[0-9a-f]{64}\.zip'
+        if (url.scheme!='https' or url.username is not None or url.password is not None
+            or url.netloc!=endpoint.netloc or url.fragment or not re.fullmatch(pattern,url.path)):
+            raise ArtifactError('Only the exact approved Arvan bucket and release prefix are accepted')
     return value
 
 

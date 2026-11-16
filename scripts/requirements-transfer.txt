@@ -1,0 +1,8 @@
+# Runner-only SDK; never installed in the website image or on Arvan.
+boto3==1.44.3
+botocore==1.44.3
+s3transfer==0.19.3
+jmespath==1.1.0
+python-dateutil==2.9.0.post0
+six==1.17.0
+urllib3==2.8.0
