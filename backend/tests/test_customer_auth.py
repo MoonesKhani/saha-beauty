@@ -173,3 +173,11 @@ def test_rejected_otp_input_is_not_echoed_in_validation_error(auth_app):
     submitted='private-invalid-code'
     r=c.post('/api/v1/auth/otp/verify',json={'challenge_id':str(uuid4()),'code':submitted})
     assert r.status_code==422 and submitted not in r.text
+
+def test_logout_revokes_existing_session_even_when_new_logins_disabled(auth_app):
+    c,_,settings,_=auth_app;login(c)
+    disabled=create_app(replace(settings,otp_enabled=False))
+    with TestClient(disabled,base_url='https://testserver') as other:
+        other.cookies.update(c.cookies)
+        assert other.post('/api/v1/auth/logout',json={}).status_code==204
+    assert c.get('/api/v1/auth/me').status_code==401

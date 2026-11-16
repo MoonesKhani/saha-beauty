@@ -160,7 +160,7 @@ def mount_customer_auth(app,settings,session):
     def logout(request:Request,db=Depends(session)):
         same_origin(request)
         token=request.cookies.get(COOKIE,'')
-        if settings.otp_enabled and re.fullmatch(r'[A-Za-z0-9_-]{43}',token):
+        if re.fullmatch(r'[A-Za-z0-9_-]{43}',token):
             record=db.get(CustomerSession,hashlib.sha256(token.encode()).hexdigest())
             if record:db.delete(record);db.commit()
         response=Response(status_code=204)
