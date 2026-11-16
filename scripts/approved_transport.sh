@@ -22,6 +22,8 @@ python3 "$(dirname "$0")/prepare_ssh_key.py" --output "$key" --known-hosts-outpu
 transport=(ssh -T -F /dev/null -o IPQoS=none -o Compression=no -o ControlMaster=auto -o ControlPersist=60 -o "ControlPath=$control" -i "$key" -p "$ARVAN_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$known" -o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 "$ARVAN_USER@$ARVAN_HOST")
 report="$RUNNER_TEMP/deployment-report.json"
 case "$OPERATION" in
+  probe)
+    python3 "$(dirname "$0")/transfer_probe.py" --commit "$REVISION" -- "${transport[@]}"; exit 0 ;;
   deploy)
     [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
     python3 "$(dirname "$0")/transfer_release.py" --attempt "${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}" --bundle "$RUNNER_TEMP/release/release.tar" --commit "$REVISION" --report "$report" -- "${transport[@]}" ;;
