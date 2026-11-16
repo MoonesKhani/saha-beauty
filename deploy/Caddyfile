@@ -7,5 +7,8 @@
         X-Content-Type-Options nosniff
         Referrer-Policy same-origin
     }
+    @api path /api/*
+    header @api Cache-Control "no-store"
+    # Preserve /api/... unchanged; handle_path would strip the OTP prefix.
     reverse_proxy app:8000
 }

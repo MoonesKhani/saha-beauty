@@ -25,6 +25,7 @@ class Settings:
     audio_upload_enabled: bool = field(default_factory=lambda: os.environ.get('SAHA_AUDIO_UPLOADS', '0') == '1')
     audio_upload_dir: Path = field(default_factory=lambda: Path(os.environ.get('SAHA_AUDIO_UPLOAD_DIR', str(ROOT / 'var' / 'audio-submissions'))))
     audio_upload_quota: int = field(default_factory=lambda: int(os.environ.get('SAHA_AUDIO_UPLOAD_QUOTA', str(250 * 1024 * 1024))))
+    booking_require_otp: bool = field(default_factory=lambda: os.environ.get('SAHA_BOOKING_REQUIRE_OTP', '0') == '1')
     booking_enabled: bool = field(default_factory=lambda: os.environ.get('SAHA_BOOKING_ENABLED', '0') == '1')
     gallery_upload_dir: Path = field(default_factory=lambda: Path(os.environ.get('SAHA_GALLERY_UPLOAD_DIR', str(ROOT / 'var' / 'gallery'))))
     gallery_upload_quota: int = field(default_factory=lambda: int(os.environ.get('SAHA_GALLERY_UPLOAD_QUOTA', str(250 * 1024 * 1024))))

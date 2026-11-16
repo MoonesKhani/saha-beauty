@@ -27,7 +27,7 @@ def create_app(settings=None):
         yield
         engine.dispose()
 
-    app = FastAPI(title='رابط برنامه‌نویسی سها', version='0.1.0', docs_url='/api/docs', lifespan=lifespan)
+    app = FastAPI(title='رابط برنامه‌نویسی سها', version='0.1.0', docs_url='/api/docs', openapi_url='/api/openapi.json', lifespan=lifespan)
     app.state.engine = engine
 
     @app.middleware('http')

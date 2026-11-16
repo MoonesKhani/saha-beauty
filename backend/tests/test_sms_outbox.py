@@ -2,6 +2,7 @@ from dataclasses import replace
 from datetime import datetime,timedelta,timezone
 from uuid import uuid4
 import time
+import pytest
 from sqlalchemy import select,func
 from sqlalchemy.orm import Session
 from backend.app.models import Appointment,Customer,SmsJob
@@ -103,6 +104,7 @@ def test_cancelled_appointment_is_never_sent(auth_app):
     assert provider.calls==[]
 
 
+@pytest.mark.parametrize('auth_app',[False,True],indirect=True)
 def test_booking_confirmation_is_transactional_and_not_duplicated(auth_app):
     c,app,settings,_=auth_app;login(c);c.post('/api/v1/auth/preferences',json={'sms_consent':True})
     from zoneinfo import ZoneInfo
@@ -120,7 +122,7 @@ def test_booking_confirmation_is_transactional_and_not_duplicated(auth_app):
     assert c.post('/api/v1/booking/reservations',json={**body,'request_id':str(uuid4())}).status_code==409
     # Knowing a verified number does not let an anonymous user trigger its messages.
     c.post('/api/v1/auth/logout',json={})
-    assert c.post('/api/v1/booking/reservations',json={**body,'request_id':str(uuid4()),'starts_at':slots[1]['starts_at']}).status_code==201
+    assert c.post('/api/v1/booking/reservations',json={**body,'request_id':str(uuid4()),'starts_at':slots[1]['starts_at']}).status_code==(401 if settings.booking_require_otp else 201)
     with Session(app.state.engine) as db:assert db.scalar(select(func.count()).select_from(SmsJob))==1
 
 def test_old_booking_confirmation_is_cancelled_instead_of_sent(auth_app):

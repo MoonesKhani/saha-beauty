@@ -10,7 +10,7 @@ async def main():
   browser=await p.chromium.launch(executable_path=os.environ.get('SAHA_CHROMIUM','/usr/bin/chromium'),args=['--no-sandbox'])
   for width in [390,1440]:
    context=await browser.new_context(viewport={'width':width,'height':900})
-   state={'enabled':False,'logged':False,'consent':False,'sends':0,'posts':[]}
+   state={'enabled':False,'logged':False,'consent':False,'sends':0,'posts':[],'requires_login':False}
    identity=str(uuid4())
    async def route_handler(route):
     from urllib.parse import urlsplit
@@ -34,7 +34,9 @@ async def main():
      elif action=='logout':state['logged']=False;code=204
      else:raise AssertionError(action)
      return await route.fulfill(status=code,body='' if code==204 else json.dumps(data),content_type='application/json')
-    if path=='/login.html':return await route.fulfill(path=ROOT/'login.html',content_type='text/html')
+    if path=='/api/v1/booking/catalog':return await route.fulfill(json={'enabled':True,'requires_login':state['requires_login'],'batch_enabled':True,'services':[{'code':'hair-braid','name':'خدمت آزمایشی','category':'مو','price_toman':0}],'team':[]})
+    if path=='/api/v1/packages':return await route.fulfill(json={'items':[]})
+    if path in ['/login.html','/booking.html','/bridal.html','/birthday.html']:return await route.fulfill(path=ROOT/path.lstrip('/'),content_type='text/html')
     if path.startswith('/assets/'):
      file=(ROOT/path.lstrip('/')).resolve()
      assert file.is_relative_to(ROOT/'assets')
@@ -60,8 +62,26 @@ async def main():
    await page.locator('#customer-logout').click()
    await expect(page.locator('#phone-form')).to_be_visible()
    assert state['sends']==1 and not errors,errors
+   state['requires_login']=True
+   target='/booking.html?service=hair-braid&origin=login-test'
+   await page.goto('https://saha-test.invalid'+target)
+   await page.wait_for_url('**/login.html?return_to=*')
+   await expect(page.locator('#phone-form')).to_be_visible()
+   assert state['sends']==1 # Navigation alone must never request a code.
+   await page.locator('#auth-phone').fill('09123456789');await page.locator('#send-code').click()
+   await expect(page.locator('#code-form')).to_be_visible()
+   await page.locator('#auth-code').fill('123456');await page.locator('#code-form button').click()
+   await page.wait_for_url('https://saha-test.invalid'+target)
+   await expect(page.locator('#reservation-phone')).to_have_value('09123456789')
+   assert await page.locator('#reservation-phone').get_attribute('readonly') is not None
+   # Even with a valid session, an external return URL is not followed.
+   await page.goto('https://saha-test.invalid/login.html?return_to=https%3A%2F%2Fother.invalid%2Fbooking.html')
+   await expect(page.locator('#customer-account')).to_be_visible()
+   assert page.url.startswith('https://saha-test.invalid/login.html')
+   assert state['sends']==2 and not errors,errors
+
    assert not await page.evaluate('document.documentElement.scrollWidth>innerWidth')
-   print(f'{width}px: disabled state, OTP login, consent and logout passed (all requests mocked)')
+   print(f'{width}px: OTP login, booking redirect/return, verified phone, safe redirect, consent and logout passed (all requests mocked)')
    await context.close()
   await browser.close()
 if __name__=='__main__':asyncio.run(main())

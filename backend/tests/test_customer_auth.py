@@ -22,7 +22,7 @@ PHONE='09123456789'
 ADMIN='offline-admin-'+('a'*40)
 
 @pytest.fixture
-def auth_app(tmp_path):
+def auth_app(tmp_path,request):
     admin=None;dbname=None
     url=f'sqlite:///{tmp_path / "auth.db"}'
     if os.environ.get('SAHA_TEST_POSTGRES_URL'):
@@ -32,7 +32,7 @@ def auth_app(tmp_path):
     upgrade_database(url);seed_database(url)
     settings=Settings(database_url=url,admin_api_token=ADMIN,otp_enabled=True,sms_live_enabled=True,
         otp_contract_confirmed=True,otp_secret=SecretStr(SECRET),melipayamak_api_key=SecretStr(KEY),
-        sms_notifications_enabled=True,booking_enabled=True,frontend_dir=build(tmp_path/'frontend'))
+        sms_notifications_enabled=True,booking_enabled=True,booking_require_otp=bool(getattr(request,'param',False)),frontend_dir=build(tmp_path/'frontend'))
     app=create_app(settings);calls=[]
     def transport(url,body):
         assert url=='https://console.melipayamak.com/api/send/otp/'+KEY
@@ -199,3 +199,36 @@ def test_otp_login_needs_no_body_id_or_notification_templates(auth_app):
         login(c)
         assert c.get('/api/v1/auth/me').json()['verified'] is True
     assert requests==[{'to':PHONE}]
+
+def test_booking_requirement_is_enforced_for_single_and_batch(auth_app):
+    c,_,settings,_=auth_app
+    required=create_app(replace(settings,booking_require_otp=True))
+    required.state.sms_provider=Melipayamak(settings,transport=lambda *_:{'code':CODE,'status':''})
+    with TestClient(required,base_url='https://testserver') as client:
+        assert client.get('/api/v1/booking/catalog').json()['requires_login'] is True
+        single={'request_id':str(uuid4()),'customer_name':'Offline test','phone':PHONE,'service_codes':['hair-braid'],'staff_code':'01','starts_at':'2027-01-01T09:00:00+03:30'}
+        batch={'request_id':str(uuid4()),'customer_name':'Offline test','phone':PHONE,'items':[{key:single[key] for key in ['service_codes','staff_code','starts_at']}]}
+        for path,body in [('/api/v1/booking/reservations',single),('/api/v1/booking/reservations/batch',batch)]:
+            assert client.post(path,json=body).status_code==401
+        login(client)
+        for path,body in [('/api/v1/booking/reservations',single),('/api/v1/booking/reservations/batch',batch)]:
+            assert client.post(path,json={**body,'phone':'09120000001'}).status_code==403
+        # Correctly verified sessions reach normal slot validation, not auth rejection.
+        assert client.post('/api/v1/booking/reservations',json=single).status_code not in (401,403,503)
+
+
+def test_no_otp_404_and_api_docs_stay_under_proxy_namespace(auth_app):
+    c,_,_,_=auth_app
+    assert c.get('/api/v1/auth/capabilities').status_code==200
+    schema=c.get('/api/openapi.json')
+    assert schema.status_code==200
+    for path in ['/api/v1/auth/otp/request','/api/v1/auth/otp/verify','/api/v1/auth/me','/api/v1/auth/logout']:
+        assert path in schema.json()['paths']
+    assert KEY not in schema.text and SECRET not in schema.text
+
+
+def test_invalid_provider_key_cannot_advertise_otp_as_ready(auth_app):
+    _,_,settings,_=auth_app
+    app=create_app(replace(settings,melipayamak_api_key=SecretStr('invalid')))
+    with TestClient(app,base_url='https://testserver') as client:
+        assert client.get('/api/v1/auth/capabilities').json()['enabled'] is False

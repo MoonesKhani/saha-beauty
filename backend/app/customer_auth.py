@@ -59,7 +59,7 @@ def same_origin(request):
 
 def configured(settings):
     if not (settings.otp_enabled and settings.sms_live_enabled and settings.otp_contract_confirmed
-            and settings.melipayamak_api_key.get_secret_value()
+            and re.fullmatch(r'[A-Za-z0-9_-]{16,256}',settings.melipayamak_api_key.get_secret_value())
             and len(settings.otp_secret.get_secret_value())>=32
             and 30<=settings.otp_ttl_seconds<=300):
         raise HTTPException(503,'ورود پیامکی هنوز فعال نشده است.')
@@ -86,6 +86,14 @@ def session_customer(db, request, now=None):
     record=db.get(CustomerSession,hashlib.sha256(token.encode()).hexdigest())
     if record is None or record.expires_at<=now:return None
     return db.get(Customer,record.customer_phone)
+
+
+def require_booking_customer(db, settings, request, phone):
+    if not settings.booking_require_otp:return
+    if not settings.otp_enabled:raise HTTPException(503,'ورود پیامکی برای رزرو هنوز فعال نشده است.')
+    customer=session_customer(db,request)
+    if customer is None:raise HTTPException(401,'برای ثبت نوبت ابتدا شماره همراه خود را تأیید کنید.')
+    if customer.phone!=phone:raise HTTPException(403,'شماره رزرو باید با شماره تأییدشده شما یکسان باشد.')
 
 
 def mount_customer_auth(app,settings,session):
