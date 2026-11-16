@@ -131,7 +131,7 @@ def mount_booking(app,settings,session,require_admin):
   db.add(BookingPrice(request_id=str(data.request_id),selection=selection,quote=quote));return quote
  @app.get('/api/v1/booking/catalog')
  def catalog(db=Depends(session)):
-  return {'enabled':settings.booking_enabled and len(settings.admin_api_token)>=32,'payment_enabled':False,'batch_enabled':True,'reviews_enabled':True,'services':[{'code':s.code,'name':s.name,'price_toman':s.price_toman,'category':'مو' if s.code.startswith('hair-') else 'سایر خدمات'} for s in db.scalars(select(Service).where(Service.is_active.is_(True),Service.code.not_in(['01','06'])).order_by(Service.sort_order))],'team':[{'code':s.code,'name':s.name,'role':s.role,'bio':s.bio,'parent_code':s.parent_code,'service_codes':[c for c in db.scalars(select(StaffExpertise.service_code).where(StaffExpertise.staff_code==s.code)) if c not in NAIL_CODES or s.code=='02']} for s in db.scalars(select(TeamMember).where(TeamMember.is_active.is_(True)).order_by(TeamMember.sort_order))]}
+  return {'enabled':settings.booking_enabled and len(settings.admin_api_token)>=32,'requires_login':settings.booking_require_otp,'payment_enabled':False,'batch_enabled':True,'reviews_enabled':True,'services':[{'code':s.code,'name':s.name,'price_toman':s.price_toman,'category':'مو' if s.code.startswith('hair-') else 'سایر خدمات'} for s in db.scalars(select(Service).where(Service.is_active.is_(True),Service.code.not_in(['01','06'])).order_by(Service.sort_order))],'team':[{'code':s.code,'name':s.name,'role':s.role,'bio':s.bio,'parent_code':s.parent_code,'service_codes':[c for c in db.scalars(select(StaffExpertise.service_code).where(StaffExpertise.staff_code==s.code)) if c not in NAIL_CODES or s.code=='02']} for s in db.scalars(select(TeamMember).where(TeamMember.is_active.is_(True)).order_by(TeamMember.sort_order))]}
  @app.get('/api/v1/booking/availability')
  def availability(staff_code:str=Query(max_length=36),services:str=Query(max_length=600),day:date=Query(),db=Depends(session)):
   enabled();return {'slots':slots(db,staff_code,services.split(','),day),'timezone':'Asia/Tehran'}
@@ -140,6 +140,8 @@ def mount_booking(app,settings,session,require_admin):
   enabled()
   origin=request.headers.get('origin')
   if origin and origin!=str(request.base_url).rstrip('/'):raise HTTPException(403,'درخواست باید از همین سایت ارسال شود.')
+  from .customer_auth import require_booking_customer
+  require_booking_customer(db,settings,request,data.phone)
   throttle(request)
   lock(db,data.staff_code)
   quote=price_booking(db,data,data.service_codes)
@@ -155,7 +157,10 @@ def mount_booking(app,settings,session,require_admin):
   appointment=Appointment(id=str(data.request_id),customer_name=data.customer_name,phone=data.phone,service_code=data.service_codes[0],staff_code=data.staff_code,starts_at=data.starts_at.astimezone(timezone.utc),ends_at=datetime.fromisoformat(chosen['ends_at']).astimezone(timezone.utc),status='confirmed')
   db.add(appointment);db.flush()
   db.add(BookingNotice(appointment_id=appointment.id,seen=False))
-  db.add_all([AppointmentService(appointment_id=appointment.id,service_code=code) for code in data.service_codes]);db.commit()
+  db.add_all([AppointmentService(appointment_id=appointment.id,service_code=code) for code in data.service_codes])
+  from .sms_outbox import queue_booking_sms
+  queue_booking_sms(db,settings,appointment,request)
+  db.commit()
   return {'reference':appointment.id,'status':'confirmed','payment_required':False, 'quote':quote}
 
  @app.post('/api/v1/booking/reservations/batch',status_code=201)
@@ -163,6 +168,8 @@ def mount_booking(app,settings,session,require_admin):
   enabled()
   origin=request.headers.get('origin')
   if origin and origin!=str(request.base_url).rstrip('/'):raise HTTPException(403,'درخواست باید از همین سایت ارسال شود.')
+  from .customer_auth import require_booking_customer
+  require_booking_customer(db,settings,request,data.phone)
   throttle(request)
   staff_codes=sorted({item.staff_code for item in data.items})
   lock(db,staff_codes[0])
@@ -184,6 +191,8 @@ def mount_booking(app,settings,session,require_admin):
     start=item.starts_at.astimezone(timezone.utc);end=datetime.fromisoformat(chosen['ends_at']).astimezone(timezone.utc)
     db.add(Appointment(id=identity,customer_name=data.customer_name,phone=data.phone,service_code=item.service_codes[0],staff_code=item.staff_code,starts_at=start,ends_at=end,status='confirmed'));db.flush()
     db.add(BookingNotice(appointment_id=identity,seen=False));db.add(AppointmentService(appointment_id=identity,service_code=item.service_codes[0]))
+    from .sms_outbox import queue_booking_sms
+    queue_booking_sms(db,settings,db.get(Appointment,identity),request)
    if any(a<end and b>start for a,b in windows):raise HTTPException(409,'زمان خدمات مشتری هم‌پوشانی دارد؛ هیچ نوبت جدیدی ثبت نشد.')
    windows.append((start,end));references.append(identity)
   db.commit();return {'references':references,'status':'confirmed','payment_required':False, 'quote':quote}

@@ -1,0 +1,28 @@
+name: Bounded transfer check (no deployment)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: saha-production
+  cancel-in-progress: false
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: saha-production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Compare verified SSH transports with at most 96 KiB of scratch data
+        env:
+          ARVAN_SSH_KEY: ${{ secrets.ARVAN_SSH_KEY }}
+          ARVAN_KNOWN_HOSTS: ${{ secrets.ARVAN_KNOWN_HOSTS }}
+          ARVAN_HOST: ${{ vars.ARVAN_HOST || '37.32.39.8' }}
+          ARVAN_USER: ${{ vars.ARVAN_USER || 'root' }}
+          ARVAN_PORT: ${{ vars.ARVAN_PORT || '22' }}
+          OPERATION: probe
+          REVISION: ${{ github.sha }}
+        run: bash scripts/approved_transport.sh

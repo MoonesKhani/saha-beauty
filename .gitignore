@@ -12,3 +12,6 @@ backups/
 *.key
 
 .deploy/
+
+.sms-env-backup-*/
+.sms-env-*

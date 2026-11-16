@@ -51,11 +51,12 @@ jobs:
       - name: Test booking transactions on PostgreSQL
         env:
           SAHA_TEST_POSTGRES_URL: postgresql+psycopg://saha:ci-fixture-only@127.0.0.1:5432/saha
-        run: .venv/bin/python -m pytest -q backend/tests/test_booking.py
+        run: .venv/bin/python -m pytest -q backend/tests/test_booking.py backend/tests/test_customer_auth.py backend/tests/test_sms_outbox.py
       - name: Test live management and uploads in Chromium
         run: |
           .venv/bin/python -m playwright install --with-deps chromium
           SAHA_CHROMIUM="$(.venv/bin/python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()')" .venv/bin/python tests/package_browser.py
+          SAHA_CHROMIUM="$(.venv/bin/python -c 'from playwright.sync_api import sync_playwright; p=sync_playwright().start(); print(p.chromium.executable_path); p.stop()')" .venv/bin/python tests/otp_browser.py
   prepare:
     needs: verify
     runs-on: ubuntu-24.04

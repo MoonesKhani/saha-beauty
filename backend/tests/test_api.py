@@ -73,7 +73,7 @@ def test_admin_disabled_by_default_and_no_health_data_endpoint(catalog_app):
     engine = make_engine(url)
     with engine.connect() as connection:
         from sqlalchemy import inspect
-        assert set(inspect(connection).get_table_names()) == {'services', 'team_members', 'alembic_version','appointments','consultations','offers','staff_services','staff_schedules','appointment_services','booking_notices','packages','gallery_images','staff_expertise','booking_prices'}
+        assert set(inspect(connection).get_table_names()) == {'services', 'team_members', 'alembic_version','appointments','consultations','offers','staff_services','staff_schedules','appointment_services','booking_notices','packages','gallery_images','staff_expertise','booking_prices','customers','customer_sessions','otp_challenges','auth_limits','sms_jobs'}
     engine.dispose()
 
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=Saha due SMS outbox job (requires separately approved activation)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/saha-deploy/run-sms-worker.py
+TimeoutStartSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true

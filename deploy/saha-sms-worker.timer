@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Saha due SMS jobs every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+Unit=saha-sms-worker.service
+
+[Install]
+WantedBy=timers.target
