@@ -126,6 +126,10 @@ class ApprovalTest(unittest.TestCase):
     def test_successful_main_run_is_eligible_but_still_needs_confirmation(self):
         validate(self.valid_run(),'MoonesKhani/saha-beauty',SHA,'DEPLOY '+SHA)
         with self.assertRaises(ValueError):validate(self.valid_run(),'MoonesKhani/saha-beauty',SHA,'')
+    def test_maintenance_has_a_distinct_approval(self):
+        validate(self.valid_run(),'MoonesKhani/saha-beauty',SHA,'MIGRATE OTP '+SHA,'otp-migration')
+        with self.assertRaises(ValueError):validate(self.valid_run(),'MoonesKhani/saha-beauty',SHA,'DEPLOY '+SHA,'otp-migration')
+        with self.assertRaises(ValueError):validate(self.valid_run(),'MoonesKhani/saha-beauty',SHA,'MIGRATE OTP '+SHA)
     def test_pr_failed_wrong_sha_and_fork_runs_cannot_deploy(self):
         for change in [{'event':'pull_request'},{'head_branch':'feature'},{'conclusion':'failure'},{'head_sha':'b'*40},{'head_repository':{'full_name':'someone/fork'}},{'path':'.github/workflows/other.yml'}]:
             with self.assertRaises(ValueError):validate({**self.valid_run(),**change},'MoonesKhani/saha-beauty',SHA,'DEPLOY '+SHA)

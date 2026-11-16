@@ -26,7 +26,7 @@
 ```bash
 git fetch origin main &&
 setup_dir="$(mktemp -d /tmp/saha-deploy-setup.XXXXXX)" &&
-git archive origin/main scripts/server-update.sh scripts/deploy_release.py scripts/deploy_receiver.py scripts/install-deploy-access.sh | tar -x -C "$setup_dir" &&
+git archive origin/main scripts/server-update.sh scripts/deploy_release.py scripts/artifact_fetch.py scripts/deploy_otp_migration.py scripts/deploy_receiver.py scripts/install-deploy-access.sh | tar -x -C "$setup_dir" &&
 bash "$setup_dir/scripts/install-deploy-access.sh" "$(git rev-parse --show-toplevel)"
 ```
 
@@ -161,7 +161,7 @@ checksum روی runner صحت نسخهٔ مبدأ را نشان می‌داد، 
 git fetch origin main &&
 fix_commit=REVIEWED_FIX_COMMIT &&
 setup_dir="$(mktemp -d /tmp/saha-deploy-runtime.XXXXXX)" &&
-git archive "$fix_commit" scripts/server-update.sh scripts/deploy_release.py scripts/deploy_receiver.py scripts/update-deploy-runtime.sh | tar -x -C "$setup_dir" &&
+git archive "$fix_commit" scripts/server-update.sh scripts/deploy_release.py scripts/artifact_fetch.py scripts/deploy_otp_migration.py scripts/deploy_receiver.py scripts/update-deploy-runtime.sh | tar -x -C "$setup_dir" &&
 bash "$setup_dir/scripts/update-deploy-runtime.sh"
 ```
 
@@ -202,3 +202,29 @@ SSH از ControlMaster/ControlPersist خصوصی همان job استفاده م�
 شبکهٔ واقعی آروان را نمی‌گیرد؛ اجرای مجدد انتشار یا آزمون انتقال روی سرور فقط
 با اجازهٔ مالک انجام می‌شود. هیچ trigger انتشار خودکاری اضافه نشده است؛ مسیر انتشار موجود حفظ می‌شود و
 این اصلاحِ سمت فرستنده نیازی به اجرای دوبارهٔ نصب ابزارها در Termius ندارد.
+
+## انتقال HTTPS و ارتقای یک‌باره OTP
+
+آزمون محدود run `43932423153` در ۱۶ نوامبر ۲۰۲۶ نشان داد حتی با SSH master
+مجزا، سرعت نمونه حدود ۷ تا ۱۱ کیلوبایت بر ثانیه است؛ انتقال کامل دوباره از SSH
+شروع نمی‌شود. نسخه ۳ SSH را فقط برای فرمان و وضعیت نگه می‌دارد و سرور بسته را
+با HTTPS و URL امضاشده کوتاه‌عمر GitHub Actions دریافت می‌کند. URL فقط در stdin
+رمز‌شده SSH است؛ در log/argv/state ذخیره نمی‌شود. دریافت فقط از میزبان Azure
+مخصوص artifact، با TLS معتبر، بدون redirect/proxy و با Range قابل ادامه است.
+SHA-256 و اندازه ZIP از GitHub API احراز‌شده، سپس اندازه و SHA-256 خود release.tar
+کنترل می‌شوند؛ دانلود و نصب دو فرمان مستقل‌اند. دریافت حداکثر دو بار و با بودجه
+۳۰۰ ثانیه هر بار مجاز است، نصب نامشخص خودکار تکرار نمی‌شود.
+
+**فعال‌شدن روی آروان هنوز به اجرای یک‌باره updater نسخه ۳ توسط مالک نیاز دارد.**
+کلید restricted نصب‌شده حق shell یا تعویض helper خودش را ندارد. دستور بالا باید
+با commit دقیق جدید و فایل‌های `artifact_fetch.py` و `deploy_otp_migration.py`
+اجرا شود. updater فقط helperها را با بکاپ خصوصی عوض می‌کند؛ app/db/env/keys تغییر
+نمی‌کنند. بعد از آن `artifact-check.yml` فقط نمونه حدود ۱۲۸KiB غیرقابل‌نصب را
+آزمایش می‌کند؛ هیچ انتشار یا migration اجرا نمی‌کند. موفقیت تست محلی به معنی
+تأیید مسیر واقعی HTTPS آروان نیست و قبل از انتشار باید همین تست موفق شود.
+
+برای اولین انتشار OTP، عملیات عادی `deploy` عمداً schema متفاوت را رد می‌کند.
+عملیات جداگانه `otp-migration` به تأیید **MIGRATE OTP <full main SHA>** و CI موفق
+همان نسخه نیاز دارد. جزئیات backup/بازیابی و آزمون در
+[OTP-MIGRATION-PLAN.md](docs/OTP-MIGRATION-PLAN.md) است. هیچ workflow آماده‌سازی
+یا CI اجازه dispatch خودکار انتشار یا migration ندارد.

@@ -6,7 +6,7 @@ on:
       operation:
         description: 'deploy, rollback or read-only status'
         type: choice
-        options: [deploy, rollback, status]
+        options: [deploy, otp-migration, rollback, status]
         required: true
       revision:
         description: 'Deploy: full approved commit SHA. Rollback: approved previous sha256:image ID.'
@@ -15,7 +15,7 @@ on:
         description: 'Successful main CI run ID (deploy only)'
         type: string
       confirmation:
-        description: 'Exact DEPLOY <commit> or ROLLBACK <image ID>, after user approval in Codex. Empty for status.'
+        description: 'Exact DEPLOY <commit>, MIGRATE OTP <commit> or ROLLBACK <image ID>, after user approval in Codex. Empty for status.'
         type: string
 permissions:
   contents: read
@@ -49,8 +49,8 @@ jobs:
           python3 - <<'PY'
           import os,re,subprocess
           mode=os.environ['OPERATION'];revision=os.environ['REVISION'];confirmation=os.environ['CONFIRMATION']
-          if mode=='deploy':
-              subprocess.run(['python3','scripts/validate_release_run.py','--repository',os.environ['GITHUB_REPOSITORY'],'--run-id',os.environ['BUILD_RUN_ID'],'--commit',revision,'--confirmation',confirmation],check=True)
+          if mode in ('deploy','otp-migration'):
+              subprocess.run(['python3','scripts/validate_release_run.py','--operation',mode,'--repository',os.environ['GITHUB_REPOSITORY'],'--run-id',os.environ['BUILD_RUN_ID'],'--commit',revision,'--confirmation',confirmation],check=True)
           elif mode=='rollback':
               if not re.fullmatch(r'sha256:[0-9a-f]{64}',revision) or confirmation!='ROLLBACK '+revision:raise SystemExit('Exact rollback approval required')
           elif mode!='status':raise SystemExit('Invalid operation')
@@ -69,7 +69,7 @@ jobs:
           ref: main
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: inputs.operation == 'deploy'
+        if: inputs.operation == 'deploy' || inputs.operation == 'otp-migration'
         with:
           name: saha-release-${{ inputs.revision }}
           path: ${{ runner.temp }}/release
@@ -77,7 +77,7 @@ jobs:
           repository: ${{ github.repository }}
           run-id: ${{ inputs.build_run_id }}
       - name: Check downloaded artifact
-        if: inputs.operation == 'deploy'
+        if: inputs.operation == 'deploy' || inputs.operation == 'otp-migration'
         working-directory: ${{ runner.temp }}/release
         run: sha256sum --check release.tar.sha256
       - name: Execute the approved transaction over verified SSH
@@ -90,6 +90,8 @@ jobs:
           ARVAN_PORT: ${{ vars.ARVAN_PORT || '22' }}
           OPERATION: ${{ inputs.operation }}
           REVISION: ${{ inputs.revision }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: bash scripts/approved_transport.sh
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
@@ -139,6 +141,18 @@ jobs:
         with:
           ref: main
           persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: inputs.operation == 'deploy' || inputs.operation == 'otp-migration'
+        with:
+          name: saha-release-${{ inputs.revision }}
+          path: ${{ runner.temp }}/release
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.build_run_id }}
+      - name: Verify retained recovery artifact
+        if: inputs.operation == 'deploy' || inputs.operation == 'otp-migration'
+        working-directory: ${{ runner.temp }}/release
+        run: sha256sum --check release.tar.sha256
       - name: Restore the previous image and its matching public site
         id: recovery
         env:

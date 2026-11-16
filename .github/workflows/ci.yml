@@ -65,15 +65,24 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Build image on GitHub, not on Arvan
         run: docker build --platform linux/amd64 --label "org.opencontainers.image.revision=$GITHUB_SHA" --tag "saha-release:$GITHUB_SHA" .
+      - name: Build schema-compatible recovery image on GitHub
+        run: python3 scripts/prepare_otp_recovery.py --commit "$GITHUB_SHA" --output "$RUNNER_TEMP/otp-recovery" --build
       - name: Prepare immutable image bundle
-        run: python3 scripts/package_release.py --commit "$GITHUB_SHA" --output "$RUNNER_TEMP/release"
+        run: python3 scripts/package_release.py --commit "$GITHUB_SHA" --output "$RUNNER_TEMP/release" --recovery-image "saha-otp-recovery:$GITHUB_SHA"
       - name: Test container deployment and rollback with disposable data
         env:
           SAHA_RUN_DOCKER_DEPLOY_TEST: '1'
           SAHA_TEST_IMAGE_COMMIT: ${{ github.sha }}
         run: python3 tests/release_container_test.py
+      - name: Rehearse additive OTP migration and compatible image recovery
+        env:
+          SAHA_RUN_DOCKER_DEPLOY_TEST: '1'
+          SAHA_TEST_IMAGE_COMMIT: ${{ github.sha }}
+          SAHA_TEST_RELEASE_BUNDLE: ${{ runner.temp }}/release/release.tar
+        run: python3 tests/otp_migration_container_test.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: saha-release-${{ github.sha }}
