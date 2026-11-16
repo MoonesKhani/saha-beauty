@@ -56,7 +56,7 @@ def valid_url(value,policy=None):
     if not isinstance(value,str) or len(value)>16384:raise ArtifactError('Invalid artifact location')
     try:
         url=urllib.parse.urlsplit(value)
-        valid=(url.scheme=='https' and url.username is None and url.password is None and url.port in (None,443)
+        valid=(policy is None and url.scheme=='https' and url.username is None and url.password is None and url.port in (None,443)
             and re.fullmatch(r'productionresultssa[a-z0-9]*\.blob\.core\.windows\.net',url.hostname or '')
             and url.path not in ('','/') and not url.fragment)
     except ValueError:raise ArtifactError('Invalid artifact location') from None

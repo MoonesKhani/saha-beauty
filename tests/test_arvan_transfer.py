@@ -39,7 +39,7 @@ class ArvanTests(unittest.TestCase):
         self.assertEqual(config.request_checksum_calculation,'when_required')
     def test_destination_is_exact_and_confined(self):
         location=self.location();self.assertEqual(valid_url(location,policy=POLICY),location)
-        for changed in [location.replace('saha-private-fixture','other-bucket'),location.replace('/saha-releases/','/user-uploads/'),location.replace('/saha-releases/','/saha-releases/../'),location.replace('/saha-releases/','/saha-releases/%2e%2e/'),location.replace('ir-fixture.arvanstorage.ir','ir-other.arvanstorage.ir'),location.replace('https:','http:'),location.replace('https://','https://user:private@')]:
+        for changed in ['https://productionresultssa7.blob.core.windows.net/actions-results/fixture',location.replace('saha-private-fixture','other-bucket'),location.replace('/saha-releases/','/user-uploads/'),location.replace('/saha-releases/','/saha-releases/../'),location.replace('/saha-releases/','/saha-releases/%2e%2e/'),location.replace('ir-fixture.arvanstorage.ir','ir-other.arvanstorage.ir'),location.replace('https:','http:'),location.replace('https://','https://user:private@')]:
             with self.assertRaises(ValueError):valid_url(changed,policy=POLICY)
         for endpoint in ['https://127.0.0.1','http://s3.ir-fixture.arvanstorage.ir','https://s3.ir-fixture.arvanstorage.ir.evil.invalid','https://s3.ir-fixture.arvanstorage.ir/private']:
             with self.assertRaises(ValueError):storage_policy({**POLICY,'endpoint':endpoint})
