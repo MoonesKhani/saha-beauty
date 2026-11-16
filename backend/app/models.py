@@ -124,3 +124,47 @@ class BookingPrice(Base):
     request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
     selection: Mapped[dict] = mapped_column(JSON)
     quote: Mapped[dict] = mapped_column(JSON)
+
+# Customer authentication is independent of the salon administrator token.
+from sqlalchemy import BigInteger
+class Customer(Base):
+    __tablename__ = 'customers'
+    phone: Mapped[str] = mapped_column(String(11), primary_key=True)
+    verified_at: Mapped[int] = mapped_column(BigInteger)
+    sms_consent: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class OtpChallenge(Base):
+    __tablename__ = 'otp_challenges'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    phone: Mapped[str] = mapped_column(String(11), index=True)
+    code_digest: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[int] = mapped_column(BigInteger)
+    expires_at: Mapped[int] = mapped_column(BigInteger)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+
+class AuthLimit(Base):
+    __tablename__ = 'auth_limits'
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_start: Mapped[int] = mapped_column(BigInteger)
+    count: Mapped[int] = mapped_column(Integer)
+    last_at: Mapped[int] = mapped_column(BigInteger)
+
+class CustomerSession(Base):
+    __tablename__ = 'customer_sessions'
+    digest: Mapped[str] = mapped_column(String(64), primary_key=True)
+    customer_phone: Mapped[str] = mapped_column(ForeignKey('customers.phone'), index=True)
+    expires_at: Mapped[int] = mapped_column(BigInteger, index=True)
+
+class SmsJob(Base):
+    __tablename__ = 'sms_jobs'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    dedupe_key: Mapped[str] = mapped_column(String(160), unique=True)
+    appointment_id: Mapped[str] = mapped_column(ForeignKey('appointments.id'), index=True)
+    customer_phone: Mapped[str] = mapped_column(ForeignKey('customers.phone'))
+    kind: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(16), default='pending')
+    due_at: Mapped[int] = mapped_column(BigInteger, index=True)
+    started_at: Mapped[int | None] = mapped_column(BigInteger)
+    sent_at: Mapped[int | None] = mapped_column(BigInteger)
+    error_code: Mapped[str | None] = mapped_column(String(40))

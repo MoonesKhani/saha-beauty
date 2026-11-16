@@ -3,6 +3,8 @@ import secrets
 import re
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import update, text
@@ -49,6 +51,13 @@ def create_app(settings=None):
         if credentials is None or not secrets.compare_digest(credentials.credentials.encode(), settings.admin_api_token.encode()):
             raise HTTPException(401, 'دسترسی مجاز نیست.', headers={'WWW-Authenticate': 'Bearer'})
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request, error):
+        if request.url.path.startswith('/api/v1/auth/'):
+            # FastAPI's default response includes the rejected input (possibly an OTP).
+            return JSONResponse(status_code=422, content={'detail':'اطلاعات ورود معتبر نیست.'})
+        return await request_validation_exception_handler(request, error)
+
     @app.exception_handler(SQLAlchemyError)
     async def database_error(_, __):
         return JSONResponse(status_code=503, content={'detail': 'پایگاه داده آماده نیست.'})
@@ -59,7 +68,7 @@ def create_app(settings=None):
         try:
             with engine.connect() as connection:
                 version = connection.execute(text('SELECT version_num FROM alembic_version')).scalar_one()
-                if version != '0004_packages':
+                if version != '0005_auth_sms':
                     raise HTTPException(503, 'نسخه پایگاه داده آماده نیست.')
             return {'status': 'ok', 'database': 'ready'}
         except SQLAlchemyError:
@@ -102,6 +111,13 @@ def create_app(settings=None):
         html = path.read_text().replace('<head>', '<head>' + bootstrap, 1)
         return HTMLResponse(html, headers={'Cache-Control': 'no-store'})
 
+    from .sms_provider import Melipayamak
+    app.state.sms_provider = Melipayamak(settings)
+    from .customer_auth import mount_customer_auth
+    mount_customer_auth(app, settings, session)
+    from .sms_outbox import mount_sms_outbox
+    mount_sms_outbox(app, settings, session, require_admin)
+
     from .audio_uploads import mount_audio_uploads
     mount_audio_uploads(app, settings, require_admin)
 
@@ -135,7 +151,7 @@ def create_app(settings=None):
 
     @app.get('/{page}', response_class=HTMLResponse, include_in_schema=False)
     def leisure_page(page: str, demo: bool=False):
-        if page in ['bridal.html','birthday.html','team-member.html','daily.html','certificates.html','trends.html','ai-consultation.html','invite.html','gallery.html','discounts.html','booking.html','booking-demo.html','admin-access.html','scheduling.html','admin-demo.html','group-visit.html','playlist.html']:
+        if page in ['login.html','bridal.html','birthday.html','team-member.html','daily.html','certificates.html','trends.html','ai-consultation.html','invite.html','gallery.html','discounts.html','booking.html','booking-demo.html','admin-access.html','scheduling.html','admin-demo.html','group-visit.html','playlist.html']:
             return HTMLResponse((settings.frontend_dir / page).read_text(),headers={'Cache-Control':'no-store'})
         if (demo and not settings.preview_enabled) or page not in ['buffet','playlist','products']:
             raise HTTPException(404,'صفحه پیدا نشد.')
