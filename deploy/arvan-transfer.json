@@ -1,0 +1,6 @@
+{
+  "endpoint": "https://s3.ir-thr-at1.arvanstorage.ir",
+  "bucket": "saha-deploy",
+  "region": "ir-thr-at1",
+  "prefix": "saha-releases/"
+}
