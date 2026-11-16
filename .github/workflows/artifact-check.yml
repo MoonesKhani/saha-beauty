@@ -41,5 +41,6 @@ jobs:
           ARVAN_USER: ${{ vars.ARVAN_USER || 'root' }}
           ARVAN_PORT: ${{ vars.ARVAN_PORT || '22' }}
           OPERATION: artifact-probe
+          RELEASE_TRANSPORT: azure
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/approved_transport.sh
