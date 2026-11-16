@@ -1,4 +1,4 @@
-"""Fetch only signed GitHub Actions blobs over verified HTTPS; never install an image."""
+"""Fetch verified HTTPS bundles from GitHub or a pinned Arvan bucket; never install."""
 import hashlib
 import json
 import os
