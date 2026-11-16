@@ -62,3 +62,20 @@ def test_scheduler_selects_only_the_existing_project_app(tmp_path):
     assert module.choose_app([good,unrelated],tmp_path)=='offline-existing-app'
     with pytest.raises(ValueError):module.choose_app([unrelated],tmp_path)
     with pytest.raises(ValueError):module.choose_app([good,good],tmp_path)
+
+def test_secret_prompt_never_falls_back_to_visible_input(tmp_path):
+    import importlib.util
+    import getpass
+    import warnings
+    from pathlib import Path
+    spec=importlib.util.spec_from_file_location('sms_setup_hidden',Path(__file__).resolve().parents[2]/'scripts/configure-sms.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    def unavailable(*_):warnings.warn('No secure terminal',getpass.GetPassWarning)
+    with patch.object(module.getpass,'getpass',side_effect=unavailable):
+        with pytest.raises(SystemExit):module.hidden_input()
+    checkout=tmp_path/'checkout';checkout.mkdir();env=checkout/'.env';env.write_text('OFFLINE_FIXTURE_ONLY=1\n')
+    backup=module.backup_environment(env,tmp_path/'private')
+    assert not backup.is_relative_to(checkout)
+    assert (backup/'environment').read_bytes()==env.read_bytes()
+    assert (backup.stat().st_mode & 0o777)==0o700
+    assert ((backup/'environment').stat().st_mode & 0o777)==0o600
