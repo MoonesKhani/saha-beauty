@@ -22,7 +22,7 @@ mkdir -p "$project_dir/.deploy"
 exec 9>"$project_dir/.deploy/deploy.lock"
 flock -n 9 || { echo 'یک انتشار در حال اجراست؛ نصب انجام نشد.' >&2; exit 1; }
 install -d -m 700 /opt/saha-deploy
-for file in server-update.sh deploy_release.py artifact_fetch.py deploy_otp_migration.py deploy_receiver.py; do install -m 700 "$source_dir/$file" "/opt/saha-deploy/$file"; done
+for file in server-update.sh image_identity.py deploy_release.py artifact_fetch.py deploy_otp_migration.py deploy_receiver.py; do install -m 700 "$source_dir/$file" "/opt/saha-deploy/$file"; done
 python3 - "$project_dir" <<'PY'
 import json,os,sys
 from pathlib import Path

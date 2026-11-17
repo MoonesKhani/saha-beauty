@@ -7,9 +7,9 @@ import re
 import tempfile
 
 try:
-    from .deploy_release import ComposeEngine,DeploymentError,atomic_json,read_state,deployment_lock,verify_bundle_file,unpack_bundle,apply_release
+    from .deploy_release import ComposeEngine,DeploymentError,atomic_json,read_state,deployment_lock,verify_bundle_file,unpack_bundle,apply_release,FAILURE_CONTEXT,record_failure
 except ImportError:
-    from deploy_release import ComposeEngine,DeploymentError,atomic_json,read_state,deployment_lock,verify_bundle_file,unpack_bundle,apply_release
+    from deploy_release import ComposeEngine,DeploymentError,atomic_json,read_state,deployment_lock,verify_bundle_file,unpack_bundle,apply_release,FAILURE_CONTEXT,record_failure
 
 LEGACY='cddc860800bf654af5f4483c32f8de646a598536'
 OLD='0004_packages';NEW='0005_auth_sms'
@@ -111,21 +111,27 @@ def main():
     verify_bundle_file(args.bundle,args.bundle_bytes,args.bundle_sha256)
     project=args.project.resolve()
     if not project.is_dir():raise DeploymentError('Existing project required')
+    FAILURE_CONTEXT.update(project=project,commit=args.commit,stage='read-approved-bundle')
     with deployment_lock(project),tempfile.TemporaryDirectory(prefix='otp-maintenance-',dir=project/'.deploy') as temporary:
         stage=Path(temporary);manifest,image=unpack_bundle(args.bundle,stage/'bundle',args.commit)
         recovery=validate_recovery(manifest);primary={key:manifest[key] for key in ['commit','image_id','database_revision']}
+        FAILURE_CONTEXT['stage']='inspect-existing-configuration'
         engine=MaintenanceEngine(project,stage)
         if not args.apply:
             print(json.dumps({'mode':'plan','source':args.commit,'current_schema':engine.database_revision(),'target_schema':NEW,'recovery_image':recovery['image_id'],'sms_enabled':False}));return
+        FAILURE_CONTEXT['stage']='load-approved-images'
         engine.load(manifest,image)
+        if manifest.get('runtime_image_id'):primary['runtime_image_id']=manifest['runtime_image_id']
+        FAILURE_CONTEXT['stage']='verify-image-schema'
         for record in (primary,recovery):
-            info=json.loads(engine.run(['docker','image','inspect',record['image_id']],'inspect approved migration image'))[0]
+            info=json.loads(engine.run(['docker','image','inspect',engine.image_reference(record)],'inspect approved migration image'))[0]
             labels=info.get('Config',{}).get('Labels') or {}
             if labels.get('org.opencontainers.image.revision')!=args.commit:raise DeploymentError('Migration image label mismatch')
-            heads=json.loads(engine.run(['docker','run','--rm','--pull=never','--network=none','--entrypoint','python',record['image_id'],'-c',HEADS],'inspect offline migration heads'))
+            heads=json.loads(engine.run(['docker','run','--rm','--pull=never','--network=none','--entrypoint','python',engine.image_reference(record),'-c',HEADS],'inspect offline migration heads'))
             if heads!=[NEW]:raise DeploymentError('Migration image schema mismatch')
-        rec_info=json.loads(engine.run(['docker','image','inspect',recovery['image_id']],'inspect recovery role'))[0]
+        rec_info=json.loads(engine.run(['docker','image','inspect',engine.image_reference(recovery)],'inspect recovery role'))[0]
         if rec_info['Config']['Labels'].get('saha.otp-recovery')!='true' or rec_info['Config']['Labels'].get('saha.legacy-source')!=LEGACY:raise DeploymentError('Recovery role mismatch')
+        FAILURE_CONTEXT['stage']='reviewed-otp-maintenance'
         result=maintain(engine,project/'.deploy/state.json',primary,recovery)
         print(json.dumps(result,sort_keys=True))
 
@@ -134,5 +140,9 @@ if __name__=='__main__':
     def interrupted(signum,frame):raise DeploymentError('Maintenance interrupted; attempting compatible image recovery')
     for signum in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(signum,interrupted)
     try:main()
-    except DeploymentError as error:raise SystemExit(str(error)) from None
-    except OSError as error:raise SystemExit('OTP maintenance I/O error; read status before retry') from None
+    except DeploymentError as error:
+        record_failure(error)
+        raise SystemExit(str(error)) from None
+    except OSError:
+        record_failure(DeploymentError('I/O error'))
+        raise SystemExit('OTP maintenance I/O error; read status before retry') from None

@@ -26,7 +26,7 @@
 ```bash
 git fetch origin main &&
 setup_dir="$(mktemp -d /tmp/saha-deploy-setup.XXXXXX)" &&
-git archive origin/main scripts/server-update.sh scripts/deploy_release.py scripts/artifact_fetch.py scripts/deploy_otp_migration.py scripts/deploy_receiver.py scripts/install-deploy-access.sh | tar -x -C "$setup_dir" &&
+git archive origin/main scripts/server-update.sh scripts/image_identity.py scripts/deploy_release.py scripts/artifact_fetch.py scripts/deploy_otp_migration.py scripts/deploy_receiver.py scripts/install-deploy-access.sh | tar -x -C "$setup_dir" &&
 bash "$setup_dir/scripts/install-deploy-access.sh" "$(git rev-parse --show-toplevel)"
 ```
 
@@ -161,7 +161,7 @@ checksum روی runner صحت نسخهٔ مبدأ را نشان می‌داد، 
 git fetch origin main &&
 fix_commit=REVIEWED_FIX_COMMIT &&
 setup_dir="$(mktemp -d /tmp/saha-deploy-runtime.XXXXXX)" &&
-git archive "$fix_commit" scripts/server-update.sh scripts/deploy_release.py scripts/artifact_fetch.py scripts/deploy_otp_migration.py scripts/deploy_receiver.py scripts/update-deploy-runtime.sh | tar -x -C "$setup_dir" &&
+git archive "$fix_commit" scripts/server-update.sh scripts/image_identity.py scripts/deploy_release.py scripts/artifact_fetch.py scripts/deploy_otp_migration.py scripts/deploy_receiver.py scripts/update-deploy-runtime.sh | tar -x -C "$setup_dir" &&
 bash "$setup_dir/scripts/update-deploy-runtime.sh"
 ```
 

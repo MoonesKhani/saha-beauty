@@ -126,6 +126,8 @@ class Sender:
             active=info.get('service',{}).get('ActiveState')
             # A failed attempt cannot inherit an older healthy state for the same image.
             if active=='failed':
+                failure=info.get('failure') or {}
+                if failure:print('Safe installation diagnostic: '+json.dumps(failure,sort_keys=True),file=sys.stderr,flush=True)
                 raise TransferError(f"Installation failed (unit {info.get('unit')}, phase {(info.get('deployment') or {}).get('phase','not-started')}). Inspect journalctl; no automatic installation retry")
             # Do not accept a stale healthy report while a service still runs.
             if state and active not in ('active','activating','deactivating'):
