@@ -326,11 +326,13 @@ class ComposeEngine:
         # Nginx serves the static files and identity from ONE atomic directory
         # switch. A standalone identity file must never mask stale HTML/assets.
         sites=target/'sites';sites.mkdir(mode=0o755,exist_ok=True)
+        sites.chmod(0o755) # Deployment runs with umask 077; Nginx must traverse public-only directories.
         release=sites/record['image_id'].split(':')[1]
         if not release.exists():
             with tempfile.TemporaryDirectory(prefix='site-',dir=sites) as temporary:
                 stage=Path(temporary)/'public';stage.mkdir(mode=0o755)
                 self.run(['docker','cp',info['Id']+':/app/frontend/dist/.',str(stage)],'extract verified public site')
+                stage.chmod(0o755)
                 if not (stage/'index.html').is_file():raise DeploymentError('Approved static site is missing')
                 size=0
                 for item in stage.rglob('*'):
@@ -343,6 +345,7 @@ class ComposeEngine:
                 os.replace(stage,release)
         wanted={key:record[key] for key in ['image_id','commit']}
         if json.loads((release/'release.json').read_text())!=wanted:raise DeploymentError('Retained static site identity mismatch')
+        release.chmod(0o755) # Also repair previously exported directories made under umask 077.
         link=target/('current.new-'+uuid4().hex)
         try:
             link.symlink_to(release,target_is_directory=True)

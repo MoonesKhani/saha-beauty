@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -54,6 +55,8 @@ class PreparationTests(unittest.TestCase):
                 raise AssertionError(label)
             engine.run=run;engine.inspect=lambda _:{'Id':'container','Image':current['image_id']}
             public=Path(tmp)/'public'
+            previous_umask=os.umask(0o077)
+            self.addCleanup(os.umask,previous_umask)
             with patch.object(release,'PUBLIC_RELEASE_ROOT',public):
                 for digit in ['a','b','a']:
                     current={'image_id':'sha256:'+digit*64,'commit':digit*40}
@@ -61,6 +64,11 @@ class PreparationTests(unittest.TestCase):
                     self.assertEqual(json.loads((public/'current/release.json').read_text()),current)
                     self.assertEqual((public/'current/index.html').read_text(),current['commit'])
                     self.assertEqual((public/'current/release.json').stat().st_mode&0o777,0o644)
+                    for directory in [public,public/'sites',(public/'current').resolve()]:
+                        self.assertEqual(directory.stat().st_mode&0o777,0o755)
+                    # A subsequent invocation must repair a retained private directory too.
+                    (public/'sites').chmod(0o700)
+                    (public/'current').resolve().chmod(0o700)
                 with self.assertRaises(release.DeploymentError):
                     engine.publish_identity({'image_id':'sha256:'+'f'*64,'commit':'f'*40})
                 self.assertEqual((public/'current/index.html').read_text(),'a'*40)
