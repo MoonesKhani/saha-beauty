@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 try:
     from .deploy_release import ComposeEngine, DeploymentError, atomic_json, deployment_lock, read_state
@@ -90,7 +91,7 @@ def live_environment(environment):
         raise DeploymentError('Existing server OTP API key is missing or invalid; no key generated')
     if len(str(result.get('SAHA_OTP_SECRET','')))<32:
         raise DeploymentError('Existing server OTP signing secret is missing or invalid; no key generated')
-    for key in ['SAHA_OTP_ENABLED','SAHA_SMS_LIVE_ENABLED','MELIPAYAMAK_OTP_CONTRACT_CONFIRMED']:result[key]='1'
+    for key in ['SAHA_OTP_ENABLED','SAHA_SMS_LIVE_ENABLED','MELIPAYAMAK_OTP_CONTRACT_CONFIRMED','SAHA_BOOKING_REQUIRE_OTP']:result[key]='1'
     result['SAHA_OTP_TTL_SECONDS']='120'
     # Booking/reminder SMS remains off. No template/key guessing.
     result['SAHA_SMS_NOTIFICATIONS_ENABLED']='0'
@@ -101,6 +102,26 @@ def command(args):
     result=subprocess.run(args,capture_output=True,text=True,timeout=30)
     if result.returncode:raise DeploymentError('Server command failed: '+args[0]+' (exit '+str(result.returncode)+'); private output withheld')
     return result.stdout
+
+def verify_local_route(current):
+    # reload returns before all workers use the new configuration. Probe fresh
+    # connections briefly; never accept an error page or another release.
+    last='no response'
+    for attempt in range(8):
+        result=subprocess.run(['curl','--noproxy','*','--silent','--show-error',
+            '--connect-timeout','2','--max-time','3','--write-out','\\n%{http_code}',
+            '--resolve',DOMAIN+':443:127.0.0.1','https://'+DOMAIN+'/release.json'],
+            capture_output=True,text=True,timeout=5)
+        body,_,status=result.stdout.rpartition('\n')
+        last='curl exit '+str(result.returncode) if result.returncode else 'HTTP '+(status if re.fullmatch('[0-9]{3}',status) else 'unknown')
+        if result.returncode==0 and status=='200':
+            try:
+                data=json.loads(body)
+                if all(data.get(key)==current[key] for key in ['image_id','commit']):return
+                last='release identity mismatch'
+            except (ValueError,AttributeError):last='invalid release JSON'
+        if attempt<7:time.sleep(0.5)
+    raise DeploymentError('Local HTTPS release verification failed ('+last+'); no response body or private configuration printed')
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--apply',action='store_true');args=parser.parse_args()
@@ -132,7 +153,7 @@ def main():
         resolved=live_environment(effective['services']['app'].get('environment') or {})
         updated=json.loads(json.dumps(data))
         env=updated['services']['app']['environment']
-        for key in ['SAHA_OTP_ENABLED','SAHA_SMS_LIVE_ENABLED','MELIPAYAMAK_OTP_CONTRACT_CONFIRMED','SAHA_OTP_TTL_SECONDS','SAHA_SMS_NOTIFICATIONS_ENABLED','SAHA_SMS_TEMPLATES_CONFIRMED']:
+        for key in ['SAHA_OTP_ENABLED','SAHA_SMS_LIVE_ENABLED','MELIPAYAMAK_OTP_CONTRACT_CONFIRMED','SAHA_OTP_TTL_SECONDS','SAHA_SMS_NOTIFICATIONS_ENABLED','SAHA_SMS_TEMPLATES_CONFIRMED','SAHA_BOOKING_REQUIRE_OTP']:
             env[key]=resolved[key]
         if not args.apply:
             print('PREFLIGHT=OK; existing keys valid; no SMS sent; no configuration changed');return
@@ -151,9 +172,7 @@ def main():
             stage='validate-and-reload-nginx'
             command(['nginx','-t']);command(['systemctl','reload','nginx'])
             stage='verify-local-https-route'
-            raw=command(['curl','--noproxy','*','--silent','--show-error','--fail','--connect-timeout','3','--max-time','10',
-                         '--resolve',DOMAIN+':443:127.0.0.1','https://'+DOMAIN+'/release.json'])
-            if json.loads(raw).get('image_id')!=current['image_id']:raise DeploymentError('Local HTTPS release identity does not match; restoring configuration')
+            verify_local_route(current)
             stage='enable-existing-otp-settings'
             atomic_json(overlay,updated)
             engine.switch(current);engine.healthy(current)
