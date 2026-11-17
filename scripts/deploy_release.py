@@ -17,8 +17,39 @@ import time
 import urllib.request
 from uuid import uuid4
 
+try:
+    from .image_identity import SavedImageIdentities,ImageIdentityError
+except ImportError:
+    from image_identity import SavedImageIdentities,ImageIdentityError
+
 MAX_BUNDLE = 2 * 1024**3
-class DeploymentError(RuntimeError):pass
+FAILURE_CONTEXT={}
+
+
+def record_failure(error):
+    # Never forward exception strings, stderr, .env values or arbitrary journal lines.
+    project=FAILURE_CONTEXT.get('project');commit=FAILURE_CONTEXT.get('commit')
+    invocation=os.environ.get('INVOCATION_ID','')
+    if not project or not re.fullmatch('[0-9a-f]{40}',commit or '') or not re.fullmatch('[0-9a-f]{32}',invocation):return
+    try:
+        atomic_json(project/'.deploy/last-failure.json',{'commit':commit,'invocation_id':invocation,
+            'stage':FAILURE_CONTEXT.get('stage','preflight'),'operation':error.diagnostic})
+    except OSError:pass
+
+
+SAFE_OPERATIONS=frozenset({
+    'load approved image','inspect approved image','verify image identity','inspect current image',
+    'verify switched image identity','read schema revision','verify backward-compatible database revision',
+    'backup database','backup uploads','verify database backup archive','verify uploads backup archive',
+    'seed missing initial records','switch app image','apply reviewed additive OTP migration',
+    'inspect offline migration heads','inspect approved migration image','inspect recovery role',
+    'verify retained Compose settings','find existing app containers','find existing database',
+})
+class DeploymentError(RuntimeError):
+    def __init__(self,message,*,diagnostic=None):
+        super().__init__(message)
+        self.diagnostic=diagnostic if diagnostic in SAFE_OPERATIONS else 'deployment safety check'
+
 
 def atomic_json(path,data):
     path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -155,7 +186,7 @@ print(json.dumps({'revision':heads[0]}))
 
 class ComposeEngine:
     def __init__(self,project,stage):
-        self.project=project.resolve();self.stage=stage
+        self.project=project.resolve();self.stage=stage;self.resolved_images=[]
         if not (self.project/'compose.yaml').is_file() or not (self.project/'.env').is_file():raise DeploymentError('Existing Compose deployment and .env required')
         self.managed=self.project/'.deploy/compose.release.json'
         identities=self.run(['docker','ps','--all','--filter','label=com.docker.compose.service=app','--format','{{.ID}}'],'find existing app containers').splitlines()
@@ -189,7 +220,7 @@ class ComposeEngine:
 
     def run(self,args,label,stdin=None,stdout=None):
         result=subprocess.run(args,cwd=self.project,stdin=stdin,stdout=stdout or subprocess.PIPE,stderr=subprocess.PIPE)
-        if result.returncode:raise DeploymentError(label+' failed; inspect local service logs (credentials are not printed here)')
+        if result.returncode:raise DeploymentError(label+' failed; inspect local service logs (credentials are not printed here)',diagnostic=label)
         return result.stdout.decode().strip() if stdout is None else ''
 
     def inspect(self,identity):return json.loads(self.run(['docker','inspect',identity],'inspect Docker object'))[0]
@@ -205,17 +236,29 @@ class ComposeEngine:
         return args
 
     def overlay(self,record,path):
-        atomic_json(path,{'services':{'app':{'image':record['image_id'],'pull_policy':'never','command':['python','-m','uvicorn','backend.app.main:app','--host','0.0.0.0','--port','8000','--proxy-headers','--forwarded-allow-ips=*']}}})
+        atomic_json(path,{'services':{'app':{'image':self.image_reference(record),'pull_policy':'never','command':['python','-m','uvicorn','backend.app.main:app','--host','0.0.0.0','--port','8000','--proxy-headers','--forwarded-allow-ips=*']}}})
         return path
+
+    @staticmethod
+    def image_reference(record):
+        identity=record.get('runtime_image_id') or record['image_id']
+        if not isinstance(identity,str) or not re.fullmatch(r'sha256:[0-9a-f]{64}',identity):raise DeploymentError('Invalid retained runtime image identity')
+        return identity
 
     def current(self):
         identity=self.run(self.compose()+['ps','-q','app'],'find current app')
         info=self.inspect(identity)
         if info['State']['Status']!='running':raise DeploymentError('Current app is not running')
-        image=info['Image'];image_info=json.loads(self.run(['docker','image','inspect',image],'inspect current image'))[0]
-        # A retained tag protects the rollback image from ordinary dangling-image cleanup.
-        self.run(['docker','image','tag',image,'saha-retained:'+image.split(':')[1]],'retain rollback image')
-        return {'image_id':image,'commit':(image_info.get('Config',{}).get('Labels') or {}).get('org.opencontainers.image.revision')}
+        image_info=json.loads(self.run(['docker','image','inspect',info['Image']],'inspect current image'))[0]
+        runtime=image_info['Id'];commit=(image_info.get('Config',{}).get('Labels') or {}).get('org.opencontainers.image.revision')
+        state=read_state(self.project/'.deploy/state.json')
+        records=[state.get(key) or {} for key in ['current','previous','recovery','legacy_original']]+self.resolved_images
+        known=next((r for r in records if r.get('commit')==commit and (r.get('runtime_image_id') or r.get('image_id'))==runtime),None)
+        image=known['image_id'] if known else runtime
+        self.run(['docker','image','tag',runtime,'saha-retained:'+image.split(':')[1]],'retain rollback image')
+        result={'image_id':image,'commit':commit}
+        if runtime!=image:result['runtime_image_id']=runtime
+        return result
 
     def check_schema(self,record):
         overlay=self.overlay(record,self.stage/('probe-'+record['image_id'].split(':')[1]+'.json'))
@@ -248,7 +291,8 @@ class ComposeEngine:
         self.overlay(record,self.managed)
         self.run(self.compose()+['up','-d','--no-deps','--no-build','--pull','never','--force-recreate','app'],'switch app image')
         info=self.inspect(self.run(self.compose()+['ps','-q','app'],'find switched app'))
-        if info['Image']!=record['image_id'] or self.mount_signature(info)!=self.mounts:raise DeploymentError('Image or persistent mounts differ from the approved deployment')
+        actual=json.loads(self.run(['docker','image','inspect',info['Image']],'verify switched image identity'))[0]
+        if actual['Id']!=self.image_reference(record) or self.mount_signature(info)!=self.mounts:raise DeploymentError('Image or persistent mounts differ from the approved deployment')
 
     def healthy(self,record):
         opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -266,10 +310,33 @@ class ComposeEngine:
         raise DeploymentError('Application readiness/functional checks failed') from last
 
     def load(self,manifest,image):
-        if shutil.disk_usage(self.project).free<max(4*1024**3,image.stat().st_size*4):raise DeploymentError('Insufficient free disk for image and rollback')
-        with image.open('rb') as source:self.run(['docker','image','load'],'load approved image',stdin=source)
-        info=json.loads(self.run(['docker','image','inspect',manifest['image_tag']],'inspect approved image'))[0]
-        if info['Id']!=manifest['image_id'] or (info.get('Config',{}).get('Labels') or {}).get('org.opencontainers.image.revision')!=manifest['commit']:raise DeploymentError('Loaded image identity mismatch')
+        proof=None
+        records=[manifest]
+        if manifest.get('otp_recovery'):records.append(manifest['otp_recovery'])
+        for record in records:record.pop('runtime_image_id',None)
+        def verify_loaded():
+            nonlocal proof
+            resolved=[]
+            for record in records:
+                info=json.loads(self.run(['docker','image','inspect',record['image_tag']],'inspect approved image'))[0]
+                if (info.get('Config',{}).get('Labels') or {}).get('org.opencontainers.image.revision')!=record['commit']:
+                    raise DeploymentError('Loaded image revision mismatch',diagnostic='verify image identity')
+                runtime=None
+                if info['Id']!=record['image_id']:
+                    try:
+                        if proof is None:proof=SavedImageIdentities(image)
+                        runtime=proof.verify(record,info)
+                    except ImageIdentityError as error:raise DeploymentError('Image identity proof failed: '+str(error),diagnostic='verify image identity') from None
+                resolved.append((record,runtime))
+            for record,runtime in resolved:
+                if runtime:record['runtime_image_id']=runtime
+        try:
+            verify_loaded() # Reuse only images proven to be the exact approved content.
+        except DeploymentError:
+            if shutil.disk_usage(self.project).free<max(4*1024**3,image.stat().st_size*4):raise DeploymentError('Insufficient free disk for image and rollback')
+            with image.open('rb') as source:self.run(['docker','image','load'],'load approved image',stdin=source)
+            verify_loaded()
+        self.resolved_images.extend(dict(record) for record in records)
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--project',type=Path,required=True);parser.add_argument('--bundle',type=Path);parser.add_argument('--commit');parser.add_argument('--bundle-bytes',type=int);parser.add_argument('--bundle-sha256');parser.add_argument('--rollback-image');parser.add_argument('--status',action='store_true')
@@ -277,6 +344,7 @@ def main():
     if not project.is_dir():raise DeploymentError('Project directory not found')
     state_path=project/'.deploy/state.json'
     if args.status:print(json.dumps(read_state(state_path),sort_keys=True));return
+    FAILURE_CONTEXT.update(project=project,commit=args.commit,stage='read-approved-bundle')
     with deployment_lock(project),tempfile.TemporaryDirectory(prefix='release-',dir=project/'.deploy') as temporary:
         stage=Path(temporary)
         if not args.rollback_image:
@@ -284,6 +352,7 @@ def main():
                 raise DeploymentError('Approved commit, expected bundle bytes and SHA-256 are required; installation blocked')
             verify_bundle_file(args.bundle.resolve(),args.bundle_bytes,args.bundle_sha256)
             manifest,image=unpack_bundle(args.bundle.resolve(),stage/'bundle',args.commit)
+        FAILURE_CONTEXT['stage']='inspect-existing-configuration'
         engine=ComposeEngine(project,stage)
         if args.rollback_image:
             if not re.fullmatch(r'sha256:[0-9a-f]{64}',args.rollback_image):raise DeploymentError('Invalid approved rollback image')
@@ -297,13 +366,20 @@ def main():
                 print(json.dumps(read_state(state_path),sort_keys=True));return
             result=apply_release(engine,state_path,{'image_id':args.rollback_image},rollback=True)
         else:
+            FAILURE_CONTEXT['stage']='load-approved-images'
             engine.load(manifest,image)
             candidate={k:manifest[k] for k in ['image_id','commit','database_revision']}
+            if manifest.get('runtime_image_id'):candidate['runtime_image_id']=manifest['runtime_image_id']
+            FAILURE_CONTEXT['stage']='apply-approved-release'
             result=apply_release(engine,state_path,candidate)
         print(json.dumps(result,sort_keys=True))
 if __name__=='__main__':
     def interrupted(signum,frame):raise DeploymentError('Deployment interrupted; attempting image recovery if a switch began')
     for signum in [signal.SIGTERM,signal.SIGINT,signal.SIGHUP]:signal.signal(signum,interrupted)
     try:main()
-    except DeploymentError as error:raise SystemExit(str(error)) from None
-    except OSError as error:raise SystemExit(f'Release I/O error (errno {error.errno}); read deployment status before retry') from None
+    except DeploymentError as error:
+        record_failure(error)
+        raise SystemExit(str(error)) from None
+    except OSError as error:
+        record_failure(DeploymentError('I/O error'))
+        raise SystemExit(f'Release I/O error (errno {error.errno}); read deployment status before retry') from None

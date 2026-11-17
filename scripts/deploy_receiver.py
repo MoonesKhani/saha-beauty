@@ -120,11 +120,17 @@ class TransferStore:
             journal.unlink()
 
 def transaction_info(store,project):
-    result=subprocess.run(['systemctl','show',store.unit,'--property=LoadState,ActiveState,Result','--no-pager'],capture_output=True,text=True,check=False)
+    result=subprocess.run(['systemctl','show',store.unit,'--property=LoadState,ActiveState,Result,InvocationID','--no-pager'],capture_output=True,text=True,check=False)
     properties=dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
     if result.returncode and properties.get('LoadState')!='not-found':
         raise ValueError('Cannot read release service state; installation blocked')
-    return {'unit':store.unit,'service':properties,'deployment':read_state(project/'.deploy/state.json')}
+    result={'unit':store.unit,'service':properties,'deployment':read_state(project/'.deploy/state.json')}
+    failure=read_state(project/'.deploy/last-failure.json')
+    if (properties.get('ActiveState')=='failed' and failure.get('commit')==store.commit
+        and failure.get('invocation_id') and failure['invocation_id']==properties.get('InvocationID')):
+        # This file contains only helper-generated stage/operation enums, never raw logs.
+        result['failure']={key:failure.get(key) for key in ['stage','operation']}
+    return result
 
 
 def export_site(project,identity,staging_root,stdout=None):
@@ -136,7 +142,7 @@ def export_site(project,identity,staging_root,stdout=None):
     with tempfile.TemporaryDirectory(prefix='site-',dir=staging_root) as directory:
         folder=Path(directory);container=None
         try:
-            container=subprocess.check_output(['docker','create','--pull=never',identity]).decode().strip()
+            container=subprocess.check_output(['docker','create','--pull=never',record.get('runtime_image_id') or identity]).decode().strip()
             subprocess.run(['docker','cp',container+':/app/frontend/dist/.',str(folder)],check=True,stdout=subprocess.DEVNULL)
             (folder/'release.json').write_text(json.dumps({'image_id':identity,'commit':record.get('commit')})+'\n')
             subprocess.run(['tar','-C',str(folder),'-czf','-','.'],check=True,stdout=stdout)

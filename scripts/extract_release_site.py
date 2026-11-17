@@ -5,6 +5,11 @@ from pathlib import Path
 import re
 import subprocess
 
+try:
+    from .image_identity import SavedImageIdentities
+except ImportError:
+    from image_identity import SavedImageIdentities
+
 
 def extract(bundle_dir,target,image,commit):
     if not re.fullmatch('sha256:[0-9a-f]{64}',image):raise ValueError('Invalid image identity')
@@ -17,9 +22,12 @@ def extract(bundle_dir,target,image,commit):
     # The release.tar digest was checked by the workflow. Load only its approved image archive.
     with (bundle_dir/'image.tar.gz').open('rb') as source:
         subprocess.run(['docker','image','load'],stdin=source,check=True,stdout=subprocess.DEVNULL)
+    actual=json.loads(subprocess.check_output(['docker','image','inspect',record['image_tag']]))[0]
+    runtime=image
+    if actual['Id']!=image:runtime=SavedImageIdentities(bundle_dir/'image.tar.gz').verify(record,actual)
     identity=None;target.mkdir(parents=True,exist_ok=False)
     try:
-        identity=subprocess.check_output(['docker','create','--pull=never',image],text=True).strip()
+        identity=subprocess.check_output(['docker','create','--pull=never',runtime],text=True).strip()
         subprocess.run(['docker','cp',identity+':/app/frontend/dist/.',str(target)],check=True)
         (target/'release.json').write_text(json.dumps({'image_id':image,'commit':commit})+'\n')
     finally:
