@@ -99,7 +99,7 @@ def live_environment(environment):
 
 def command(args):
     result=subprocess.run(args,capture_output=True,text=True,timeout=30)
-    if result.returncode:raise DeploymentError('Server command failed: '+args[0]+'; private output withheld')
+    if result.returncode:raise DeploymentError('Server command failed: '+args[0]+' (exit '+str(result.returncode)+'); private output withheld')
     return result.stdout
 
 def main():
@@ -141,20 +141,25 @@ def main():
         if snippet.exists():shutil.copy2(snippet,backup/'nginx-snippet.private')
         shutil.copy2(overlay,backup/'otp-overlay.private')
         marker_existed=marker.exists();snippet_existed=snippet.exists()
+        stage='publish-current-site'
         try:
             marker.touch(mode=0o600)
             engine.healthy(current) # Publishes the verified current identity, not the desired image.
             snippet.parent.mkdir(parents=True,exist_ok=True)
             snippet.write_text(SNIPPET);snippet.chmod(0o644)
             vhost.write_text(proposed)
+            stage='validate-and-reload-nginx'
             command(['nginx','-t']);command(['systemctl','reload','nginx'])
+            stage='verify-local-https-route'
             raw=command(['curl','--noproxy','*','--silent','--show-error','--fail','--connect-timeout','3','--max-time','10',
                          '--resolve',DOMAIN+':443:127.0.0.1','https://'+DOMAIN+'/release.json'])
             if json.loads(raw).get('image_id')!=current['image_id']:raise DeploymentError('Local HTTPS release identity does not match; restoring configuration')
+            stage='enable-existing-otp-settings'
             atomic_json(overlay,updated)
             engine.switch(current);engine.healthy(current)
             print('PREPARATION=OK; Nginx identity route ready; existing OTP keys retained; real OTP enabled for the next approved app deployment; no SMS sent')
-        except BaseException:
+        except BaseException as error:
+            reason=str(error) if isinstance(error,DeploymentError) else type(error).__name__
             shutil.copy2(backup/'otp-overlay.private',overlay)
             shutil.copy2(backup/'nginx-vhost.private',vhost)
             if snippet_existed:shutil.copy2(backup/'nginx-snippet.private',snippet)
@@ -164,7 +169,7 @@ def main():
                 command(['nginx','-t']);command(['systemctl','reload','nginx'])
             except BaseException:raise DeploymentError('Preparation failed and configuration recovery needs attention; live data was not restored or deleted') from None
             if not marker_existed:marker.unlink(missing_ok=True)
-            raise DeploymentError('Preparation failed; previous app/settings restored; no live data restored or deleted') from None
+            raise DeploymentError('Preparation failed at '+stage+': '+reason+'; previous app/settings restored; no live data restored or deleted') from None
 
 if __name__=='__main__':
     try:main()
