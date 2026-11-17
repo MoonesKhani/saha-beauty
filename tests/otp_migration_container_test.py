@@ -12,8 +12,8 @@ import urllib.request
 from uuid import uuid4
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from scripts.deploy_release import DeploymentError,read_state,unpack_bundle
-from scripts.deploy_otp_migration import MaintenanceEngine,maintain,validate_recovery,OLD,NEW
+from scripts.deploy_release import ComposeEngine,DeploymentError,read_state,unpack_bundle
+from scripts.deploy_otp_migration import MaintenanceEngine,maintain,validate_recovery,OLD,NEW,ENVIRONMENT
 from scripts.package_release import digest
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -27,9 +27,11 @@ def main():
         manifest,_=unpack_bundle(bundle,stage/'bundle',commit);recovery=validate_recovery(manifest)
         primary={k:manifest[k] for k in ['commit','image_id','database_revision']}
         with socket.socket() as listener:listener.bind(('127.0.0.1',0));port=listener.getsockname()[1]
-        (project/'compose.yaml').write_text((ROOT/'compose.yaml').read_text().replace('127.0.0.1:8000:8000',f'127.0.0.1:{port}:8000'))
+        current_compose=(ROOT/'compose.yaml').read_text().replace('127.0.0.1:8000:8000',f'127.0.0.1:{port}:8000')
+        legacy_compose='\n'.join(line for line in current_compose.splitlines() if not any(line.lstrip().startswith(key+':') for key in ENVIRONMENT))+'\n'
+        (project/'compose.yaml').write_text(legacy_compose)
         token=secrets.token_hex(32)
-        (project/'.env').write_text('POSTGRES_PASSWORD='+secrets.token_hex(24)+'\nADMIN_API_TOKEN='+token+'\nSAHA_BOOKING_ENABLED=1\n')
+        (project/'.env').write_text('POSTGRES_PASSWORD='+secrets.token_hex(24)+'\nADMIN_API_TOKEN='+token+'\nSAHA_BOOKING_ENABLED=1\nMELIPAYAMAK_API_KEY=offline-fixture-not-a-real-key\nSAHA_OTP_SECRET='+secrets.token_hex(32)+'\n')
         original_env=(project/'.env').read_bytes()
         overlay=project/'initial.json';overlay.write_text(json.dumps({'services':{'app':{'image':recovery['image_id'],'pull_policy':'never','command':['python','-m','uvicorn','backend.app.main:app','--host','0.0.0.0','--port','8000']}}}))
         compose=['docker','compose','--project-directory',str(project),'--project-name',name,'-f',str(project/'compose.yaml'),'-f',str(overlay)]
@@ -48,6 +50,14 @@ def main():
                     if api('/api/v1/health/ready')['status']=='ok':break
                 except Exception:time.sleep(1)
             else:raise AssertionError('Recovery not ready on schema 0004')
+            # Reproduce production: Compose now declares OTP keys, but the
+            # still-running legacy container was created without those keys.
+            (project/'compose.yaml').write_text(current_compose)
+            try:ComposeEngine(project,stage)
+            except DeploymentError:pass
+            else:raise AssertionError('Normal release must reject the new settings')
+            assert not (project/'.deploy/state.json').exists()
+            assert not (project/'backups').exists()
             engine=MaintenanceEngine(project,stage)
             assert engine.database_revision()==OLD
             db_id=engine.run(compose+['ps','-q','db'],'fixture database ID')

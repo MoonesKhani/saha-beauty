@@ -71,6 +71,11 @@ def stage(sender,probe=False,check=False):
     state=sender.request('status')
     if not state.get('arvan_fetch') or state.get('arvan_policy_hash')!=storage_policy_hash(config):
         raise DownloadError('Install and pin this exact Arvan destination on the receiver first; no upload or installation attempted')
+    if not (probe or check):
+        cached=sender.query() # Receiver rechecks the exact approved tar size/SHA-256.
+        if cached.get('complete') is True and cached.get('bytes')==sender.size:
+            print('Exact approved bundle already verified on receiver; reusing it without upload/download',flush=True)
+            return cached
     archive,digest=prepare_zip(sender);storage=client(config)
     key=publish(storage,config,archive,digest,sender.digest,sender.commit)
     command=f'{sender.commit} {sender.digest} {sender.size} {digest} {archive.stat().st_size}'
