@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 try:
     from .deploy_release import ComposeEngine, DeploymentError, atomic_json, deployment_lock, read_state
@@ -102,6 +103,26 @@ def command(args):
     if result.returncode:raise DeploymentError('Server command failed: '+args[0]+' (exit '+str(result.returncode)+'); private output withheld')
     return result.stdout
 
+def verify_local_route(current):
+    # reload returns before all workers use the new configuration. Probe fresh
+    # connections briefly; never accept an error page or another release.
+    last='no response'
+    for attempt in range(8):
+        result=subprocess.run(['curl','--noproxy','*','--silent','--show-error',
+            '--connect-timeout','2','--max-time','3','--write-out','\\n%{http_code}',
+            '--resolve',DOMAIN+':443:127.0.0.1','https://'+DOMAIN+'/release.json'],
+            capture_output=True,text=True,timeout=5)
+        body,_,status=result.stdout.rpartition('\n')
+        last='curl exit '+str(result.returncode) if result.returncode else 'HTTP '+(status if re.fullmatch('[0-9]{3}',status) else 'unknown')
+        if result.returncode==0 and status=='200':
+            try:
+                data=json.loads(body)
+                if all(data.get(key)==current[key] for key in ['image_id','commit']):return
+                last='release identity mismatch'
+            except (ValueError,AttributeError):last='invalid release JSON'
+        if attempt<7:time.sleep(0.5)
+    raise DeploymentError('Local HTTPS release verification failed ('+last+'); no response body or private configuration printed')
+
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--apply',action='store_true');args=parser.parse_args()
     if os.geteuid()!=0:raise DeploymentError('Run as root in Termius')
@@ -151,9 +172,7 @@ def main():
             stage='validate-and-reload-nginx'
             command(['nginx','-t']);command(['systemctl','reload','nginx'])
             stage='verify-local-https-route'
-            raw=command(['curl','--noproxy','*','--silent','--show-error','--fail','--connect-timeout','3','--max-time','10',
-                         '--resolve',DOMAIN+':443:127.0.0.1','https://'+DOMAIN+'/release.json'])
-            if json.loads(raw).get('image_id')!=current['image_id']:raise DeploymentError('Local HTTPS release identity does not match; restoring configuration')
+            verify_local_route(current)
             stage='enable-existing-otp-settings'
             atomic_json(overlay,updated)
             engine.switch(current);engine.healthy(current)

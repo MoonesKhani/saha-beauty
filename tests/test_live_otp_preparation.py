@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from scripts import deploy_release as release
@@ -40,6 +41,24 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(result['SAHA_BOOKING_REQUIRE_OTP'],'1')
         with self.assertRaises(release.DeploymentError) as error:live.live_environment({})
         self.assertNotIn('private-fixture',str(error.exception))
+
+    def test_local_probe_waits_for_new_nginx_workers(self):
+        current={'image_id':'sha256:'+'a'*64,'commit':'a'*40}
+        replies=[SimpleNamespace(returncode=0,stdout='old worker not found\n404'),
+                 SimpleNamespace(returncode=0,stdout=json.dumps(current)+'\n200')]
+        with patch.object(live.subprocess,'run',side_effect=replies) as run,patch.object(live.time,'sleep'):
+            live.verify_local_route(current)
+        self.assertEqual(run.call_count,2)
+        for call in run.call_args_list:
+            self.assertNotIn('--data',call.args[0]);self.assertNotIn('POST',call.args[0])
+
+    def test_persistent_http_error_is_not_bypassed_or_body_printed(self):
+        current={'image_id':'sha256:'+'a'*64,'commit':'a'*40}
+        for reply,reason in [(SimpleNamespace(returncode=0,stdout='private-response-fixture\n403'),'HTTP 403'),
+                             (SimpleNamespace(returncode=0,stdout='{}\n200'),'identity mismatch')]:
+            with self.subTest(reason=reason),patch.object(live.subprocess,'run',return_value=reply),patch.object(live.time,'sleep'):
+                with self.assertRaises(release.DeploymentError) as error:live.verify_local_route(current)
+                self.assertIn(reason,str(error.exception));self.assertNotIn('private-response-fixture',str(error.exception))
 
     def test_public_static_site_and_identity_follow_rollback_atomically(self):
         with tempfile.TemporaryDirectory() as tmp:
