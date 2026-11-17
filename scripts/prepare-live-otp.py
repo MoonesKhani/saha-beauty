@@ -90,7 +90,7 @@ def live_environment(environment):
         raise DeploymentError('Existing server OTP API key is missing or invalid; no key generated')
     if len(str(result.get('SAHA_OTP_SECRET','')))<32:
         raise DeploymentError('Existing server OTP signing secret is missing or invalid; no key generated')
-    for key in ['SAHA_OTP_ENABLED','SAHA_SMS_LIVE_ENABLED','MELIPAYAMAK_OTP_CONTRACT_CONFIRMED']:result[key]='1'
+    for key in ['SAHA_OTP_ENABLED','SAHA_SMS_LIVE_ENABLED','MELIPAYAMAK_OTP_CONTRACT_CONFIRMED','SAHA_BOOKING_REQUIRE_OTP']:result[key]='1'
     result['SAHA_OTP_TTL_SECONDS']='120'
     # Booking/reminder SMS remains off. No template/key guessing.
     result['SAHA_SMS_NOTIFICATIONS_ENABLED']='0'
@@ -132,7 +132,7 @@ def main():
         resolved=live_environment(effective['services']['app'].get('environment') or {})
         updated=json.loads(json.dumps(data))
         env=updated['services']['app']['environment']
-        for key in ['SAHA_OTP_ENABLED','SAHA_SMS_LIVE_ENABLED','MELIPAYAMAK_OTP_CONTRACT_CONFIRMED','SAHA_OTP_TTL_SECONDS','SAHA_SMS_NOTIFICATIONS_ENABLED','SAHA_SMS_TEMPLATES_CONFIRMED']:
+        for key in ['SAHA_OTP_ENABLED','SAHA_SMS_LIVE_ENABLED','MELIPAYAMAK_OTP_CONTRACT_CONFIRMED','SAHA_OTP_TTL_SECONDS','SAHA_SMS_NOTIFICATIONS_ENABLED','SAHA_SMS_TEMPLATES_CONFIRMED','SAHA_BOOKING_REQUIRE_OTP']:
             env[key]=resolved[key]
         if not args.apply:
             print('PREFLIGHT=OK; existing keys valid; no SMS sent; no configuration changed');return

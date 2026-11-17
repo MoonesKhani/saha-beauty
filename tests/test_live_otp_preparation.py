@@ -37,6 +37,7 @@ class PreparationTests(unittest.TestCase):
         for key in environment:self.assertEqual(result[key],environment[key])
         self.assertEqual(result['SAHA_OTP_ENABLED'],'1');self.assertEqual(result['SAHA_SMS_LIVE_ENABLED'],'1')
         self.assertEqual(result['SAHA_SMS_NOTIFICATIONS_ENABLED'],'0')
+        self.assertEqual(result['SAHA_BOOKING_REQUIRE_OTP'],'1')
         with self.assertRaises(release.DeploymentError) as error:live.live_environment({})
         self.assertNotIn('private-fixture',str(error.exception))
 
