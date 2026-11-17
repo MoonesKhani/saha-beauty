@@ -23,6 +23,7 @@ except ImportError:
     from image_identity import SavedImageIdentities,ImageIdentityError
 
 MAX_BUNDLE = 2 * 1024**3
+PUBLIC_RELEASE_ROOT = Path('/var/lib/saha-release')
 FAILURE_CONTEXT={}
 
 
@@ -305,9 +306,48 @@ class ComposeEngine:
                 for path,field in [('/api/v1/catalog','services'),('/api/v1/packages','items'),('/api/v1/booking/catalog','team')]:
                     with opener.open(self.base_url+path,timeout=3) as response:
                         if not isinstance(json.load(response).get(field),list):raise DeploymentError('Functional check failed')
+                self.publish_identity(record)
                 return
             except Exception as error:last=error;time.sleep(2)
         raise DeploymentError('Application readiness/functional checks failed') from last
+
+    def publish_identity(self,record):
+        # Opt-in host Nginx endpoint. Publish only after health and actual image checks;
+        # rollback uses the same path, so the public identity follows the running app.
+        if not (self.project/'.deploy/public-release.enabled').is_file():return
+        info=self.inspect(self.run(self.compose()+['ps','-q','app'],'find current app'))
+        actual=json.loads(self.run(['docker','image','inspect',info['Image']],'inspect current image'))[0]
+        if actual['Id']!=self.image_reference(record):raise DeploymentError('Public release identity differs from running image')
+        if (actual.get('Config',{}).get('Labels') or {}).get('org.opencontainers.image.revision')!=record.get('commit'):
+            raise DeploymentError('Public release revision differs from running image')
+        target=PUBLIC_RELEASE_ROOT
+        target.mkdir(mode=0o755,parents=True,exist_ok=True)
+        os.chmod(target,0o755)
+        # Nginx serves the static files and identity from ONE atomic directory
+        # switch. A standalone identity file must never mask stale HTML/assets.
+        sites=target/'sites';sites.mkdir(mode=0o755,exist_ok=True)
+        release=sites/record['image_id'].split(':')[1]
+        if not release.exists():
+            with tempfile.TemporaryDirectory(prefix='site-',dir=sites) as temporary:
+                stage=Path(temporary)/'public';stage.mkdir(mode=0o755)
+                self.run(['docker','cp',info['Id']+':/app/frontend/dist/.',str(stage)],'extract verified public site')
+                if not (stage/'index.html').is_file():raise DeploymentError('Approved static site is missing')
+                size=0
+                for item in stage.rglob('*'):
+                    if item.is_symlink() or not (item.is_file() or item.is_dir()):raise DeploymentError('Unsafe static site entry')
+                    if item.is_file():size+=item.stat().st_size
+                    item.chmod(0o755 if item.is_dir() else 0o644)
+                if size>100*1024**2:raise DeploymentError('Approved static site exceeds size limit')
+                atomic_json(stage/'release.json',{key:record[key] for key in ['image_id','commit']})
+                (stage/'release.json').chmod(0o644)
+                os.replace(stage,release)
+        wanted={key:record[key] for key in ['image_id','commit']}
+        if json.loads((release/'release.json').read_text())!=wanted:raise DeploymentError('Retained static site identity mismatch')
+        link=target/('current.new-'+uuid4().hex)
+        try:
+            link.symlink_to(release,target_is_directory=True)
+            os.replace(link,target/'current')
+        finally:link.unlink(missing_ok=True)
 
     def load(self,manifest,image):
         proof=None
