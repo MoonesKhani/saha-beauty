@@ -79,6 +79,20 @@ def maintain(engine,state_path,primary,recovery):
         raise DeploymentError('OTP maintenance stopped; compatible image retained/restored; no live data restore performed') from None
 
 class MaintenanceEngine(ComposeEngine):
+    def verify_container_environment(self,service,configured,actual,image_defaults):
+        if service!='app':
+            return super().verify_container_environment(service,configured,actual,image_defaults)
+        present={item.split('=',1)[0] for item in actual}
+        defaults={item.split('=',1)[0] for item in image_defaults}
+        additions={key for key in configured if key in ENVIRONMENT and key not in present and key not in defaults}
+        for key in additions:
+            if ENVIRONMENT[key]=='0' and str(configured[key])!='0':
+                raise DeploymentError('New OTP/SMS and booking-proof flags must remain disabled during maintenance')
+        # Only the reviewed additions can differ BEFORE backup. Existing keys,
+        # unknown additions, the database and all normal releases stay strict.
+        retained={key:value for key,value in configured.items() if key not in additions}
+        super().verify_container_environment(service,retained,actual,image_defaults)
+
     def database_revision(self):
         return self.run(self.compose()+['exec','-T','db','psql','-U','saha','-d','saha','-Atqc','SELECT version_num FROM alembic_version'],'read schema revision')
     def quiet_environment(self):

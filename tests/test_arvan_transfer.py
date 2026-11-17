@@ -19,6 +19,7 @@ class Sender:
     def __init__(self,root):
         self.bundle=root/'release.tar';self.bundle.write_bytes(b'offline fixture, not an installable image')
         self.size=self.bundle.stat().st_size;self.digest=hashlib.sha256(self.bundle.read_bytes()).hexdigest();self.calls=[]
+    def query(self):return {'protocol':2,'complete':False,'bytes':0}
     def request(self,command,data=None,timeout=None):
         self.calls.append((command,data))
         return {'arvan_fetch':True,'arvan_policy_hash':storage_policy_hash(POLICY)} if command=='status' else {'complete':True,'bytes':self.size}
@@ -62,6 +63,12 @@ class ArvanTests(unittest.TestCase):
         with patch('scripts.artifact_fetch.installed_storage_policy',return_value=POLICY):
             result=fetch(self.location(),self.root/'received.tar',self.sender.digest,self.sender.size,digest,len(first),open_url=lambda *args,**kwargs:Response())
         self.assertTrue(result['complete']);self.assertEqual((self.root/'received.tar').read_bytes(),self.sender.bundle.read_bytes())
+    def test_verified_cached_approved_bundle_skips_all_storage_operations(self):
+        self.sender.query=lambda:{'protocol':2,'complete':True,'bytes':self.sender.size}
+        with patch('scripts.arvan_transfer.configuration',return_value=POLICY),patch('scripts.arvan_transfer.client') as client,patch('scripts.arvan_transfer.prepare_zip') as archive:
+            self.assertTrue(stage(self.sender)['complete'])
+            client.assert_not_called();archive.assert_not_called()
+        self.assertEqual(self.sender.calls,[('status',None)])
     def test_upload_failure_never_requests_download_or_installation(self):
         with patch('scripts.arvan_transfer.configuration',return_value=POLICY),patch('scripts.arvan_transfer.client'),patch('scripts.arvan_transfer.publish',side_effect=DownloadError('upload failed')):
             with self.assertRaises(DownloadError):stage(self.sender)

@@ -181,7 +181,11 @@ class ComposeEngine:
         effective=json.loads(self.run(self.compose()+['config','--format','json'],'verify retained Compose settings'))
         for service,container in [('app',info),('db',self.inspect(db))]:
             image=json.loads(self.run(['docker','image','inspect',container['Image']],'inspect original image defaults'))[0]
-            verify_environment(effective['services'][service].get('environment') or {},container['Config'].get('Env') or [],image.get('Config',{}).get('Env') or [])
+            self.verify_container_environment(service,effective['services'][service].get('environment') or {},container['Config'].get('Env') or [],image.get('Config',{}).get('Env') or [])
+
+    def verify_container_environment(self,service,configured,actual,image_defaults):
+        # Ordinary release/rollback always retains the complete strict check.
+        verify_environment(configured,actual,image_defaults)
 
     def run(self,args,label,stdin=None,stdout=None):
         result=subprocess.run(args,cwd=self.project,stdin=stdin,stdout=stdout or subprocess.PIPE,stderr=subprocess.PIPE)
