@@ -21,8 +21,8 @@ async def main():
    span_box=await root.locator('h1>span').bounding_box();line_box=await root.locator('.hero-underline').bounding_box();assert line_box['y']>=span_box['y']+span_box['height']
    assert await root.locator('.hero-scene img').evaluate('(e)=>e.complete&&e.naturalWidth>0')
    assert await root.locator('.hero-eyebrow').count()==0
-   assert 'Saha Hoda' in await root.locator('h1 > .saha-slogan').evaluate('(e)=>getComputedStyle(e).fontFamily')
-   assert await page.evaluate("document.fonts.check('26px Saha Hoda', 'سَها، تجربه یک زیبایی')")
+   assert 'Saha Nastaliq' in await root.locator('h1').evaluate('(e)=>getComputedStyle(e).fontFamily')
+   assert await page.evaluate("document.fonts.check('26px Saha Nastaliq')")
    assert await root.locator('.reservation-note').count()==1
    assert 'برای قطعی‌شدن نوبتت بیعانه دریافت می‌شه.' in await root.locator('.reservation-note').inner_text()
    assert not any('saha-quiet-bloom.mp3' in url for url,_ in requests),'موسیقی نباید پیش‌فرض بارگیری شود'
