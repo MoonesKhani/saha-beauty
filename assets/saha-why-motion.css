@@ -1,0 +1,170 @@
+.saha-premium .hero-signature .saha-hero-name {
+  font-family: "Saha Dima Tahriri", "Saha Nastaliq", serif;
+}
+
+#why .why-motion {
+  display: grid;
+  gap: 10px;
+}
+#why .why-motion-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(8px, 2vw, 24px);
+}
+#why .why-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: 210px;
+  padding: clamp(12px, 2.4vw, 30px);
+  overflow: hidden;
+  isolation: isolate;
+  color: #422b37;
+  text-align: start;
+  cursor: pointer;
+}
+#why .why-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(112deg, transparent 29%, #fff9 47%, transparent 65%);
+  transform: translateX(-110%);
+}
+#why .why-card:is(:hover, :focus-visible, [aria-pressed="true"]) {
+  z-index: 2;
+  translate: 0 -7px;
+  border-color: #b83f79;
+  box-shadow: 0 19px 42px #8e2d5e36;
+}
+#why .why-card:focus-visible {
+  outline: 2px solid #8e2d5e;
+  outline-offset: 3px;
+}
+#why .why-card:is(:hover, :focus-visible, [aria-pressed="true"])::after {
+  animation: saha-why-glint .8s ease-out;
+}
+#why .why-motion-grid:has(.why-card:is(:hover, :focus-visible, [aria-pressed="true"]))
+  .why-card:not(:hover, :focus-visible, [aria-pressed="true"]) { opacity: .76; }
+@keyframes saha-why-glint { to { transform: translateX(110%); } }
+
+#why .why-art {
+  height: auto;
+  aspect-ratio: 1;
+  transition: transform .45s cubic-bezier(.2,.75,.3,1.25);
+}
+#why .why-card:is(:hover, :focus-visible, [aria-pressed="true"]) .why-art {
+  transform: scale(1.14) rotate(-8deg);
+}
+#why .why-title {
+  font-size: clamp(15px, 2.2vw, 25px);
+  font-weight: 800;
+  margin-block: 5px 3px;
+}
+#why .why-copy {
+  display: grid;
+  flex: 1;
+  align-items: start;
+  font-size: clamp(11px, 1.35vw, 16px);
+  line-height: 1.8;
+  color: #634653;
+}
+#why .why-line { grid-area: 1 / 1; }
+#why .why-line[data-inactive] { visibility: hidden; }
+#why .why-steps { display: flex; gap: 4px; margin-block-start: 12px; }
+#why .why-steps i {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #d9a8bb;
+}
+#why .why-card:not([data-step]) i:first-child,
+#why .why-card[data-step="0"] i:first-child,
+#why .why-card[data-step="1"] i:nth-child(2),
+#why .why-card[data-step="2"] i:nth-child(3) { width: 13px; background: #a23266; }
+#why .why-motion-toggle {
+  justify-self: end;
+  padding: 5px 10px;
+  border: 1px solid #bd8199;
+  background: #fff9f8;
+  color: #743856;
+  border-radius: 999px;
+  font-size: 11px;
+  cursor: pointer;
+}
+@media (max-width: 650px) {
+  #why .why-card { min-height: 158px; padding: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #why .why-card, #why .why-art { transition: none; }
+  #why .why-card::after { animation: none !important; }
+}
+
+/* The page’s plum, rose and blossom artwork carry through to these cards. */
+#why .why-motion-grid { position: relative; isolation: isolate; }
+#why .why-card {
+  --card-surface: linear-gradient(145deg, #fff9f7 24%, #f7d6e5 100%);
+  border: 2px solid transparent;
+  border-radius: 30px 13px 30px 13px;
+  background: var(--card-surface) padding-box,
+    linear-gradient(136deg, #8e2d5e, #f7c1d8 27%, #b83f79 58%, #f7d6e5 81%, #8e2d5e) border-box;
+  box-shadow: 0 13px 30px #8e2d5e25;
+  transition: translate .35s, scale .35s, box-shadow .35s, opacity .35s;
+}
+#why .why-card--precision { --card-surface: linear-gradient(145deg, #fff0f6, #eab5cd); }
+#why .why-card--calm { --card-surface: linear-gradient(145deg, #fff9f7, #ecd2e2); }
+#why .why-card::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  z-index: -1;
+  pointer-events: none;
+  border: 1px solid #b83f794f;
+  border-radius: 25px 9px 25px 9px;
+  opacity: .68;
+}
+#why .why-card[aria-pressed="true"] {
+  --card-surface: linear-gradient(145deg, #8e2d5e, #54203f);
+  scale: 1.045;
+  border-color: transparent;
+  color: #fff4f8;
+  box-shadow: 0 22px 45px #8e2d5e59;
+}
+#why .why-card[aria-pressed="true"] .why-copy { color: #fff0f6; }
+#why .why-card[aria-pressed="true"] i { background: #eaa7c5; }
+#why .why-card[aria-pressed="true"][data-step="0"] i:first-child,
+#why .why-card[aria-pressed="true"][data-step="1"] i:nth-child(2),
+#why .why-card[aria-pressed="true"][data-step="2"] i:nth-child(3) { background: #fff7fa; }
+#why .why-art {
+  display: grid;
+  place-items: center;
+  width: clamp(33px, 5vw, 55px);
+  border: 1px solid #fff9;
+  border-radius: 44% 59% 43% 57%;
+  background: linear-gradient(135deg, #e98cb4, #8e2d5e);
+  box-shadow: 0 6px 16px #8e2d5e40, inset 0 0 0 3px #fff3;
+  color: #fff9f7;
+  font-size: clamp(18px, 2.5vw, 32px);
+  line-height: 1;
+}
+#why .why-glints {
+  position: absolute;
+  pointer-events: none;
+  inset-inline-end: 11%;
+  inset-block-start: 39%;
+  color: #fff9fb;
+  text-shadow: 0 0 7px #ae3973, 0 0 15px #fff;
+  font-size: clamp(13px, 2vw, 23px);
+  opacity: 0;
+}
+#why .why-glints small { display: inline-block; translate: 0 -10px; }
+@media (max-width: 650px) {
+  #why .why-card { border-radius: 20px 9px 20px 9px; }
+  #why .why-card::before { inset: 3px; border-radius: 16px 6px 16px 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #why .why-card { transition: none; }
+}
