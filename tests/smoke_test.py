@@ -15,14 +15,14 @@ async def main():
    page.on('pageerror',lambda e:errors.append(str(e)));page.on('requestfailed',lambda r:failed.append(r.url))
    await page.goto(BASE,wait_until='networkidle',timeout=45000);await page.wait_for_timeout(900)
    root=page.locator('.saha-premium');assert await root.count()==1
-   assert await root.locator('h1').inner_text()=='سَها، تجربه یک زیبایی'
+   assert await root.locator('h1').inner_text()=='سها، تجربه یک زیبایی'
    assert await root.locator('h1').evaluate('(e)=>e.scrollWidth<=e.clientWidth+1')
    assert await root.locator('.hero-category-dock').count()==0
    span_box=await root.locator('h1>span').bounding_box();line_box=await root.locator('.hero-underline').bounding_box();assert line_box['y']>=span_box['y']+span_box['height']
    assert await root.locator('.hero-scene img').evaluate('(e)=>e.complete&&e.naturalWidth>0')
    assert await root.locator('.hero-eyebrow').count()==0
-   assert 'Saha Nastaliq' in await root.locator('h1').evaluate('(e)=>getComputedStyle(e).fontFamily')
-   assert await page.evaluate("document.fonts.check('26px Saha Nastaliq')")
+   assert 'Saha Dima Tahriri' in await root.locator('h1').evaluate('(e)=>getComputedStyle(e).fontFamily')
+   assert await page.evaluate("document.fonts.check('26px Saha Dima Tahriri')")
    assert await root.locator('.reservation-note').count()==1
    assert 'برای قطعی‌شدن نوبتت بیعانه دریافت می‌شه.' in await root.locator('.reservation-note').inner_text()
    assert not any('saha-quiet-bloom.mp3' in url for url,_ in requests),'موسیقی نباید پیش‌فرض بارگیری شود'
