@@ -1,0 +1,53 @@
+.saha-premium #top .hero-scene img {
+  object-position: 36% 48%;
+  filter: saturate(.88);
+}
+.saha-premium #top .hero-shade {
+  background: linear-gradient(270deg, #422230f5, #522c3bde 29%, #522c3b28 64%, transparent),
+    linear-gradient(0deg, #4d293bcc, transparent 35%);
+}
+.saha-premium #top .hero-layout {
+  direction: rtl;
+  min-height: clamp(445px, 49vw, 585px);
+}
+.saha-premium #top .hero-signature { display: none; }
+
+.saha-premium :is(#perks, #why, #services, #packages, #team) {
+  padding-block: clamp(30px, 4vw, 60px) !important;
+  background: linear-gradient(135deg, #fffaf6, #f7e4e6 55%, #fbf0eb) !important;
+}
+.saha-premium :is(#why, #packages) { background: #fff9f5 !important; }
+.saha-premium #top .premium-primary {
+  box-shadow: 0 10px 28px #32182156, inset 0 1px #fff9;
+  transition: scale .32s cubic-bezier(.2, 1.65, .55, 1), box-shadow .32s ease;
+}
+@media (hover: hover) {
+  .saha-premium #top .premium-primary:hover { scale: 1.04; box-shadow: 0 14px 34px #32182180; }
+}
+.saha-premium #top .premium-primary:active { scale: .96; }
+
+@keyframes saha-silk-enter {
+  from { opacity: .28; translate: 0 24px; }
+  to { opacity: 1; translate: 0 0; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    html:not([data-saha-motion="paused"]) .saha-premium :is(#perks, #why, #services, #packages, #team) h2 {
+      animation: saha-silk-enter linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 28%;
+    }
+  }
+}
+
+@media (max-width: 650px) {
+  .saha-premium #top .hero-layout { min-height: 0; padding-top: clamp(195px, 54vw, 270px); }
+  .saha-premium #top .hero-scene { height: 340px; }
+  .saha-premium #top .hero-scene img {
+    object-position: 39% 43%;
+    transform: scale(1.075) translateY(var(--hero-drift, 0px));
+  }
+  .saha-premium #top .hero-shade {
+    background: linear-gradient(0deg, #503040 27%, #503040ed 44%, #50304055 62%, transparent 79%);
+  }
+}
