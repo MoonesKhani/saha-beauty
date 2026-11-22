@@ -1,0 +1,15 @@
+@font-face {
+  font-family: "Saha Dima Tahriri";
+  src: url("./saha-dima-tahriri2.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+.saha-slogan,
+.saha-slogan > small {
+  font-family: "Saha Dima Tahriri", sans-serif;
+}
+
+.admin-footer .saha-slogan {
+  color: inherit;
+}
