@@ -1,0 +1,53 @@
+.saha-scroll-meter {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 10000;
+  height: 3px;
+  pointer-events: none;
+  background: linear-gradient(90deg, #9e3868, #ed9caa, #ffe1af);
+  transform: scaleX(var(--saha-scroll-progress, 0));
+  transform-origin: right;
+}
+.saha-premium :is(#perks, #why, #services, #packages, #team) {
+  padding-block: clamp(23px, 4vw, 56px) !important;
+  isolation: isolate;
+}
+.saha-premium :is(#perks, #services, #packages)::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -50px 0;
+  background:
+    radial-gradient(ellipse at 84% 27%, #e993bcad, transparent 47%),
+    radial-gradient(ellipse at 13% 74%, #ffe3bbd9, transparent 50%),
+    linear-gradient(145deg, #fff6f2, #f4d5e4, #fff8f1);
+  transform: translateY(var(--saha-scroll-light, 0px));
+  pointer-events: none;
+}
+.saha-premium #why {
+  background: radial-gradient(ellipse at 9% 20%, #ffd9b98a, transparent 54%), linear-gradient(135deg, #f6c7df, #fff6f1 70%) !important;
+}
+.saha-premium #team {
+  background: linear-gradient(150deg, #fff5ed, #f5cce0) !important;
+}
+.saha-premium [data-saha-scroll-title] { position: relative; }
+.saha-premium [data-saha-scroll-title]::after {
+  content: "";
+  display: block;
+  width: min(106px, 28%);
+  height: 3px;
+  margin: 10px auto 0;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #f0af8d, #ad3a70);
+}
+.saha-premium .saha-scroll-arrived::after {
+  animation: saha-scroll-line 650ms cubic-bezier(.18,.8,.3,1) both;
+  transform-origin: right;
+}
+@keyframes saha-scroll-line {
+  from { transform: scaleX(.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .saha-scroll-meter { display: none; }
+  .saha-premium :is(#perks, #services, #packages)::before { transform: none; }
+}
